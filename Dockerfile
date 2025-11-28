@@ -34,6 +34,7 @@ RUN apt-get update && \
 # Copy application code
 COPY app/ ./app/
 COPY templates/ ./templates/
+COPY static/ ./static/
 COPY config.yaml .
 
 # Create data directory

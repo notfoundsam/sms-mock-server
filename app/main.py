@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from app.config import load_config
 from app.storage import Storage
@@ -36,6 +37,9 @@ app = FastAPI(
     description="Mock server for Twilio SMS/Call APIs",
     version="1.0.0",
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Setup UI routes
 setup_ui_routes(app, storage, config)
