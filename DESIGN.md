@@ -337,24 +337,36 @@ validation:
 
 **Pages**:
 1. **Dashboard** (`/`)
-   - Recent activity summary
+   - Recent activity summary (last 10 messages/calls)
    - Statistics (total messages, calls, callbacks)
+   - Auto-refresh every 3 seconds via HTMX
+   - Clickable rows to view message/call details in modal
 
 2. **Messages** (`/ui/messages`)
-   - Table of all SMS messages
-   - Filters: status, date range, from/to number
-   - Detail view with delivery events
+   - Paginated table of all SMS messages (50 per page)
+   - Auto-refresh every 3 seconds via HTMX
+   - Click-to-view modal with full message details
+   - Previous/Next pagination controls
 
 3. **Calls** (`/ui/calls`)
-   - Table of all calls
-   - Filters: status, date range, from/to number
-   - Detail view with call events
+   - Paginated table of all calls (50 per page)
+   - Auto-refresh every 3 seconds via HTMX
+   - Click-to-view modal with full call details
+   - Previous/Next pagination controls
 
 4. **Callbacks** (`/ui/callbacks`)
-   - Log of all callback attempts
-   - Status, retries, responses
+   - Paginated log of all callback attempts (50 per page)
+   - Auto-refresh every 3 seconds via HTMX
+   - Shows status code, attempt number, response body
+   - Previous/Next pagination controls
 
-**Technology**: Server-side rendered HTML with Jinja2 + HTMX for dynamic updates
+**Technology**: Server-side rendered HTML with Jinja2 + HTMX for auto-refresh and dynamic updates
+
+**HTMX Features**:
+- Automatic polling (`hx-trigger="every 3s"`) for real-time updates
+- Fragment updates without full page reload
+- Modal loading for detail views
+- Clear data actions with confirmation dialogs
 
 ## 4. Data Flow
 
@@ -445,11 +457,21 @@ validation:
 │   │       ├── invalid_phone_number.json  # 400 - Invalid format
 │   │       └── invalid_from_number.json   # 400 - From not allowed
 │   └── ui/
-│       ├── base.html
-│       ├── dashboard.html
-│       ├── messages.html
-│       ├── calls.html
-│       └── callbacks.html
+│       ├── base.html           # Base template with navbar, modal, styles
+│       ├── dashboard.html      # Dashboard page
+│       ├── messages.html       # Messages list page
+│       ├── calls.html          # Calls list page
+│       ├── callbacks.html      # Callbacks list page
+│       └── fragments/          # HTMX fragments for auto-refresh
+│           ├── stats.html
+│           ├── recent_messages.html
+│           ├── recent_calls.html
+│           ├── messages_table.html
+│           ├── calls_table.html
+│           ├── callbacks_table.html
+│           ├── message_detail.html    # Modal content
+│           ├── call_detail.html       # Modal content
+│           └── pagination.html        # Reusable pagination controls
 └── data/
     └── mock_server.db
 ```
@@ -561,13 +583,73 @@ validation:
   "status": "healthy",
   "version": "1.0.0",
   "provider": "twilio",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "2024-01-15T10:30:00Z",
+  "statistics": {
+    "messages": 42,
+    "calls": 15,
+    "callbacks": 84
+  }
 }
 ```
 
 **HTTP Status**: 200 OK
 
-### 6.4 SDK Compatibility
+### 6.4 Callback Test Endpoint
+
+**Endpoint**: `POST /callback-test`
+
+**Purpose**: Local endpoint for testing callbacks without external URLs
+
+**Request**: Accepts any form data (simulates receiving callback POST)
+
+**Response**:
+```json
+{
+  "status": "received",
+  "data": {
+    "MessageSid": "SM...",
+    "MessageStatus": "delivered",
+    ...
+  }
+}
+```
+
+**HTTP Status**: 200 OK
+
+**Use Case**: When running in Docker, external callback URLs may not be accessible. This endpoint provides a working target for testing callback functionality:
+```
+StatusCallback=http://localhost:8080/callback-test
+```
+
+### 6.5 Clear Data Endpoints
+
+**Endpoints**:
+- `POST /clear/messages` - Clear all messages
+- `POST /clear/calls` - Clear all calls
+- `POST /clear/callbacks` - Clear all callback logs
+- `POST /clear/all` - Clear all data (messages + calls + callbacks)
+
+**Response**:
+```json
+{
+  "deleted": 42,
+  "type": "messages"
+}
+```
+
+**Purpose**: Reset mock server data during testing without restarting container
+
+### 6.6 Favicon Endpoint
+
+**Endpoint**: `GET /favicon.ico`
+
+**Purpose**: Serve favicon for web UI
+
+**Response**: SVG image (SMS message bubble icon)
+
+**HTTP Status**: 200 OK
+
+### 6.7 SDK Compatibility
 
 The mock server is designed to work seamlessly with official Twilio SDKs by using the same URL structure and authentication mechanism.
 
