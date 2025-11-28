@@ -1,0 +1,29 @@
+services:
+  sms-mock-server:
+    build: .
+    container_name: sms-mock-server
+    ports:
+      - "9090:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./templates:/app/templates
+      - ./data:/app/data
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+      - ./requirements.txt:/app/requirements.txt
+      - ./requirements-dev.txt:/app/requirements-dev.txt
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - sms-mock-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  sms-mock-network:
+    driver: bridge
