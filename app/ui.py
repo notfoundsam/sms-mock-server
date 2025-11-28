@@ -1,4 +1,5 @@
 """Web UI routes for SMS Mock Server."""
+import json
 import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -145,6 +146,20 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         stats = storage.get_statistics()
         total_callbacks = stats.get("callbacks", 0)
         total_pages = (total_callbacks + per_page - 1) // per_page
+
+        # Parse JSON payload to extract status and SID for each callback
+        for callback in callbacks:
+            try:
+                payload = json.loads(callback["payload"])
+                callback["message_status"] = payload.get("MessageStatus")
+                callback["call_status"] = payload.get("CallStatus")
+                callback["message_sid"] = payload.get("MessageSid")
+                callback["call_sid"] = payload.get("CallSid")
+            except (json.JSONDecodeError, KeyError):
+                callback["message_status"] = None
+                callback["call_status"] = None
+                callback["message_sid"] = None
+                callback["call_sid"] = None
 
         return templates.TemplateResponse(
             "callbacks.html",
@@ -295,6 +310,20 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         total_callbacks = stats.get("callbacks", 0)
         total_pages = (total_callbacks + per_page - 1) // per_page
 
+        # Parse JSON payload to extract status and SID for each callback
+        for callback in callbacks:
+            try:
+                payload = json.loads(callback["payload"])
+                callback["message_status"] = payload.get("MessageStatus")
+                callback["call_status"] = payload.get("CallStatus")
+                callback["message_sid"] = payload.get("MessageSid")
+                callback["call_sid"] = payload.get("CallSid")
+            except (json.JSONDecodeError, KeyError):
+                callback["message_status"] = None
+                callback["call_status"] = None
+                callback["message_sid"] = None
+                callback["call_sid"] = None
+
         return templates.TemplateResponse(
             "fragments/callbacks_table.html",
             {
@@ -362,5 +391,48 @@ def setup_ui_routes(app, storage: Storage, config: Config):
             {
                 "request": request,
                 "call": call,
+            },
+        )
+
+    @app.get("/ui/fragments/callback-detail/{callback_id}", response_class=HTMLResponse)
+    async def callback_detail(request: Request, callback_id: int):
+        """Callback detail modal fragment.
+
+        Args:
+            request: FastAPI request object
+            callback_id: Callback log ID
+
+        Returns:
+            HTML fragment with callback details
+        """
+        user_agent = request.headers.get("user-agent", "unknown")
+        logger.info(f"Request for callback details: {callback_id} - UA: {user_agent}")
+        callback = storage.get_callback(callback_id)
+        if not callback:
+            logger.warning(f"Callback not found: {callback_id}")
+            return HTMLResponse(
+                content="<div class='modal-body'><p>Callback not found</p></div>",
+                status_code=404,
+            )
+
+        # Parse JSON payload to extract status and SID
+        try:
+            payload = json.loads(callback["payload"])
+            callback["message_status"] = payload.get("MessageStatus")
+            callback["call_status"] = payload.get("CallStatus")
+            callback["message_sid"] = payload.get("MessageSid")
+            callback["call_sid"] = payload.get("CallSid")
+        except (json.JSONDecodeError, KeyError):
+            callback["message_status"] = None
+            callback["call_status"] = None
+            callback["message_sid"] = None
+            callback["call_sid"] = None
+
+        logger.info(f"Returning callback details for {callback_id}")
+        return templates.TemplateResponse(
+            "fragments/callback_detail.html",
+            {
+                "request": request,
+                "callback": callback,
             },
         )

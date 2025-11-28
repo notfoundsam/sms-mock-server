@@ -20,7 +20,7 @@ class Storage:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get database connection with row factory."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -28,6 +28,10 @@ class Storage:
         """Initialize database schema."""
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # Enable WAL mode for better concurrent access
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
 
         # Messages table
         cursor.execute("""
@@ -415,6 +419,27 @@ class Storage:
         conn.close()
 
         return [dict(row) for row in rows]
+
+    def get_callback(self, callback_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single callback log by ID.
+
+        Args:
+            callback_id: Callback log ID
+
+        Returns:
+            Callback log dict or None if not found
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT * FROM callback_logs WHERE id = ?",
+            (callback_id,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
 
     # Statistics
     def get_statistics(self) -> Dict[str, int]:

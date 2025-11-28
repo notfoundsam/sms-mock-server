@@ -1,0 +1,56 @@
+<div class="modal-header">
+    <h2>Callback Details</h2>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body">
+    <div class="detail-row">
+        <div class="detail-label">Callback ID</div>
+        <div class="detail-value"><code>{{ callback.id }}</code></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value">
+            {% if callback.message_status or callback.call_status %}
+                {{ callback.message_status or callback.call_status }}
+            {% else %}
+                Unknown
+            {% endif %}
+        </div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">HTTP Status Code</div>
+        <div class="detail-value">
+            {% if callback.status_code %}
+                <span class="status {% if callback.status_code >= 200 and callback.status_code < 300 %}delivered{% else %}failed{% endif %}">
+                    {{ callback.status_code }}
+                </span>
+            {% else %}
+                <span class="status failed">Network Error</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Attempt Number</div>
+        <div class="detail-value">{{ callback.attempt_number }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Target URL</div>
+        <div class="detail-value" style="word-break: break-all;">{{ callback.target_url }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Request Payload</div>
+        <div class="detail-value">
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px;">{{ callback.payload }}</pre>
+        </div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Response Body</div>
+        <div class="detail-value">
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 200px;">{{ callback.response_body if callback.response_body else "No response" }}</pre>
+        </div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Created At</div>
+        <div class="detail-value timestamp">{{ callback.created_at }}</div>
+    </div>
+</div>

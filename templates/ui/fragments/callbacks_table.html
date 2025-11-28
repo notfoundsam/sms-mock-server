@@ -3,17 +3,30 @@
 <table>
     <thead>
         <tr>
-            <th>Target URL</th>
-            <th>Status Code</th>
+            <th>Message SID</th>
+            <th>Message Status</th>
+            <th>HTTP Code</th>
             <th>Attempt</th>
-            <th>Response</th>
             <th>Created</th>
         </tr>
     </thead>
     <tbody>
         {% for callback in callbacks %}
-        <tr>
-            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ callback.target_url }}</td>
+        <tr style="cursor: pointer;" hx-get="/ui/fragments/callback-detail/{{ callback.id }}" hx-target="#modal-content" hx-swap="innerHTML" onclick="openModal()">
+            <td>
+                {% if callback.message_sid or callback.call_sid %}
+                    <code>{{ (callback.message_sid or callback.call_sid)[:20] }}...</code>
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                {% if callback.message_status or callback.call_status %}
+                    {{ callback.message_status or callback.call_status }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
             <td>
                 {% if callback.status_code %}
                     <span class="status {% if callback.status_code >= 200 and callback.status_code < 300 %}delivered{% else %}failed{% endif %}">
@@ -24,9 +37,6 @@
                 {% endif %}
             </td>
             <td>{{ callback.attempt_number }}</td>
-            <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;">
-                {{ callback.response_body[:100] }}
-            </td>
             <td class="timestamp">{{ callback.created_at }}</td>
         </tr>
         {% endfor %}
