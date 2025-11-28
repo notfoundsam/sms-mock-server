@@ -1,0 +1,30 @@
+<div hx-get="/ui/fragments/recent-calls" hx-trigger="every 3s" hx-swap="outerHTML">
+{% if recent_calls %}
+<table>
+    <thead>
+        <tr>
+            <th>SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for call in recent_calls %}
+        <tr onclick="showCallDetail('{{ call.call_sid }}')" style="cursor: pointer;">
+            <td><code>{{ call.call_sid[:20] }}...</code></td>
+            <td class="phone">{{ call.from_number }}</td>
+            <td class="phone">{{ call.to_number }}</td>
+            <td><span class="status {{ call.status }}">{{ call.status }}</span></td>
+            <td class="timestamp">{{ call.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No calls yet. Make your first call to get started!</p>
+</div>
+{% endif %}
+</div>

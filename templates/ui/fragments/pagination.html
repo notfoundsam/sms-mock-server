@@ -1,0 +1,17 @@
+{% if total_pages > 1 %}
+<div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}" class="pagination-btn" style="padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Previous</a>
+    {% else %}
+    <span class="pagination-btn disabled" style="padding: 8px 16px; background: #95a5a6; color: white; border-radius: 4px; opacity: 0.5;">Previous</span>
+    {% endif %}
+
+    <span style="padding: 8px 16px;">Page {{ page }} of {{ total_pages }}</span>
+
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}" class="pagination-btn" style="padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Next</a>
+    {% else %}
+    <span class="pagination-btn disabled" style="padding: 8px 16px; background: #95a5a6; color: white; border-radius: 4px; opacity: 0.5;">Next</span>
+    {% endif %}
+</div>
+{% endif %}

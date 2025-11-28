@@ -1,0 +1,42 @@
+<div class="modal-header">
+    <h2>Call Details</h2>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body">
+    <div class="detail-row">
+        <div class="detail-label">Call SID</div>
+        <div class="detail-value"><code>{{ call.call_sid }}</code></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value"><span class="status {{ call.status }}">{{ call.status }}</span></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">From</div>
+        <div class="detail-value phone">{{ call.from_number }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">To</div>
+        <div class="detail-value phone">{{ call.to_number }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">TwiML URL</div>
+        <div class="detail-value">{{ call.twiml_url if call.twiml_url else "None" }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Callback URL</div>
+        <div class="detail-value">{{ call.callback_url if call.callback_url else "None" }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Provider</div>
+        <div class="detail-value">{{ call.provider }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Created At</div>
+        <div class="detail-value timestamp">{{ call.created_at }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Updated At</div>
+        <div class="detail-value timestamp">{{ call.updated_at }}</div>
+    </div>
+</div>

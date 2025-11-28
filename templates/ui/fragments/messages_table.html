@@ -1,0 +1,35 @@
+<div hx-get="/ui/fragments/messages-table?page={{ page }}" hx-trigger="every 3s" hx-swap="outerHTML">
+{% if messages %}
+<table>
+    <thead>
+        <tr>
+            <th>Message SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Body</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for message in messages %}
+        <tr onclick="showMessageDetail('{{ message.message_sid }}')" style="cursor: pointer;">
+            <td><code>{{ message.message_sid[:20] }}...</code></td>
+            <td class="phone">{{ message.from_number }}</td>
+            <td class="phone">{{ message.to_number }}</td>
+            <td>{{ message.body[:60] }}{% if message.body|length > 60 %}...{% endif %}</td>
+            <td><span class="status {{ message.status }}">{{ message.status }}</span></td>
+            <td class="timestamp">{{ message.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% include "fragments/pagination.html" %}
+{% else %}
+<div class="empty-state">
+    <p>No messages found.</p>
+    <p style="margin-top: 10px; font-size: 14px;">Messages will appear here once you send SMS via the API.</p>
+</div>
+{% endif %}
+</div>

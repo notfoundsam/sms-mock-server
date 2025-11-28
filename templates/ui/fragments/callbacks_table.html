@@ -1,0 +1,43 @@
+<div hx-get="/ui/fragments/callbacks-table?page={{ page }}" hx-trigger="every 3s" hx-swap="outerHTML">
+{% if callbacks %}
+<table>
+    <thead>
+        <tr>
+            <th>Target URL</th>
+            <th>Status Code</th>
+            <th>Attempt</th>
+            <th>Response</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for callback in callbacks %}
+        <tr>
+            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ callback.target_url }}</td>
+            <td>
+                {% if callback.status_code %}
+                    <span class="status {% if callback.status_code >= 200 and callback.status_code < 300 %}delivered{% else %}failed{% endif %}">
+                        {{ callback.status_code }}
+                    </span>
+                {% else %}
+                    <span class="status failed">Error</span>
+                {% endif %}
+            </td>
+            <td>{{ callback.attempt_number }}</td>
+            <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;">
+                {{ callback.response_body[:100] }}
+            </td>
+            <td class="timestamp">{{ callback.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% include "fragments/pagination.html" %}
+{% else %}
+<div class="empty-state">
+    <p>No callback logs found.</p>
+    <p style="margin-top: 10px; font-size: 14px;">Callback logs will appear here when callbacks are sent.</p>
+</div>
+{% endif %}
+</div>

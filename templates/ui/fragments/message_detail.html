@@ -1,0 +1,42 @@
+<div class="modal-header">
+    <h2>Message Details</h2>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body">
+    <div class="detail-row">
+        <div class="detail-label">Message SID</div>
+        <div class="detail-value"><code>{{ message.message_sid }}</code></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value"><span class="status {{ message.status }}">{{ message.status }}</span></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">From</div>
+        <div class="detail-value phone">{{ message.from_number }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">To</div>
+        <div class="detail-value phone">{{ message.to_number }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Body</div>
+        <div class="detail-value">{{ message.body }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Callback URL</div>
+        <div class="detail-value">{{ message.callback_url if message.callback_url else "None" }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Provider</div>
+        <div class="detail-value">{{ message.provider }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Created At</div>
+        <div class="detail-value timestamp">{{ message.created_at }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Updated At</div>
+        <div class="detail-value timestamp">{{ message.updated_at }}</div>
+    </div>
+</div>

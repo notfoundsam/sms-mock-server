@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SMS Mock Server{% endblock %}
+
+{% block content %}
+<div hx-get="/ui/fragments/stats" hx-trigger="every 3s" hx-swap="outerHTML">
+<div class="stats">
+    <div class="stat-card">
+        <h3>Total Messages</h3>
+        <div class="value">{{ stats.messages }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Calls</h3>
+        <div class="value">{{ stats.calls }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Callbacks</h3>
+        <div class="value">{{ stats.callbacks }}</div>
+    </div>
+</div>
+
+<div class="clear-actions" style="margin-bottom: 30px;">
+    <button class="clear-btn" hx-post="/clear/messages" hx-confirm="Clear all messages?" hx-swap="none">Clear Messages</button>
+    <button class="clear-btn" hx-post="/clear/calls" hx-confirm="Clear all calls?" hx-swap="none">Clear Calls</button>
+    <button class="clear-btn" hx-post="/clear/callbacks" hx-confirm="Clear all callbacks?" hx-swap="none">Clear Callbacks</button>
+    <button class="clear-btn clear-all" hx-post="/clear/all" hx-confirm="Clear ALL data? This cannot be undone!" hx-swap="none">Clear All</button>
+</div>
+</div>
+
+<h2 style="margin-bottom: 20px;">Recent Messages</h2>
+<div hx-get="/ui/fragments/recent-messages" hx-trigger="every 3s" hx-swap="outerHTML">
+{% if recent_messages %}
+<table style="margin-bottom: 40px;">
+    <thead>
+        <tr>
+            <th>SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Body</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for message in recent_messages %}
+        <tr onclick="showMessageDetail('{{ message.message_sid }}')" style="cursor: pointer;">
+            <td><code>{{ message.message_sid[:20] }}...</code></td>
+            <td class="phone">{{ message.from_number }}</td>
+            <td class="phone">{{ message.to_number }}</td>
+            <td>{{ message.body[:50] }}{% if message.body|length > 50 %}...{% endif %}</td>
+            <td><span class="status {{ message.status }}">{{ message.status }}</span></td>
+            <td class="timestamp">{{ message.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No messages yet. Send your first SMS to get started!</p>
+</div>
+{% endif %}
+</div>
+
+<h2 style="margin-bottom: 20px;">Recent Calls</h2>
+<div hx-get="/ui/fragments/recent-calls" hx-trigger="every 3s" hx-swap="outerHTML">
+{% if recent_calls %}
+<table>
+    <thead>
+        <tr>
+            <th>SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for call in recent_calls %}
+        <tr onclick="showCallDetail('{{ call.call_sid }}')" style="cursor: pointer;">
+            <td><code>{{ call.call_sid[:20] }}...</code></td>
+            <td class="phone">{{ call.from_number }}</td>
+            <td class="phone">{{ call.to_number }}</td>
+            <td><span class="status {{ call.status }}">{{ call.status }}</span></td>
+            <td class="timestamp">{{ call.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No calls yet. Make your first call to get started!</p>
+</div>
+{% endif %}
+</div>
+{% endblock %}

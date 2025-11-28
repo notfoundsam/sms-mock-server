@@ -1,0 +1,28 @@
+{
+  "sid": "{{ call_sid }}",
+  "date_created": "{{ date_created }}",
+  "date_updated": "{{ date_updated }}",
+  "parent_call_sid": null,
+  "account_sid": "{{ account_sid }}",
+  "to": "{{ request.To }}",
+  "to_formatted": "{{ request.To }}",
+  "from": "{{ request.From }}",
+  "from_formatted": "{{ request.From }}",
+  "phone_number_sid": null,
+  "status": "{{ status }}",
+  "start_time": null,
+  "end_time": null,
+  "duration": null,
+  "price": null,
+  "price_unit": "USD",
+  "direction": "outbound-api",
+  "answered_by": null,
+  "api_version": "2010-04-01",
+  "forwarded_from": null,
+  "caller_name": null,
+  "uri": "/2010-04-01/Accounts/{{ account_sid }}/Calls/{{ call_sid }}.json",
+  "subresource_uris": {
+    "notifications": "/2010-04-01/Accounts/{{ account_sid }}/Calls/{{ call_sid }}/Notifications.json",
+    "recordings": "/2010-04-01/Accounts/{{ account_sid }}/Calls/{{ call_sid }}/Recordings.json"
+  }
+}

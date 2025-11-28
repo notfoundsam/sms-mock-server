@@ -1,0 +1,6 @@
+{
+  "code": 21606,
+  "message": "The 'From' phone number {{ from_number }} is not a valid, message-capable Twilio phone number.",
+  "more_info": "https://www.twilio.com/docs/errors/21606",
+  "status": 400
+}

@@ -1,0 +1,45 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+
+provider: twilio  # Current active provider
+
+twilio:
+  account_sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+  auth_token: your_auth_token_here
+
+  # Validation settings
+  validation:
+    require_auth: false             # Validate auth token (disabled for testing)
+    validate_phone_format: false    # Check E.164 phone number format (disabled for testing)
+    check_from_numbers: false       # Require From number in allowed list (disabled for testing)
+    require_parameters: true        # Validate required parameters
+
+  # Behavior for numbers not in registered_numbers or failure_numbers
+  # Options: "success" or "failure"
+  default_behavior: success
+
+  registered_numbers:
+    # Numbers that will successfully deliver (queued -> sent -> delivered)
+    - "+15551234567"
+    - "+15559876543"
+
+  allowed_from_numbers:
+    - "+15550000001"
+    - "+15550000002"
+
+  # Numbers that simulate failures
+  failure_numbers:
+    - "+15559999999"  # Always fails
+
+  callbacks:
+    enabled: true
+    delay_seconds: 2  # Simulate delivery delay
+    retry_attempts: 3
+    retry_delay_seconds: 5
+
+database:
+  path: "./data/mock_server.db"
+
+templates:
+  path: "./templates/responses"

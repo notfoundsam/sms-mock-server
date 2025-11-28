@@ -1,0 +1,23 @@
+<div hx-get="/ui/fragments/stats" hx-trigger="every 3s" hx-swap="outerHTML">
+<div class="stats">
+    <div class="stat-card">
+        <h3>Total Messages</h3>
+        <div class="value">{{ stats.messages }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Calls</h3>
+        <div class="value">{{ stats.calls }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Callbacks</h3>
+        <div class="value">{{ stats.callbacks }}</div>
+    </div>
+</div>
+
+<div class="clear-actions" style="margin-bottom: 30px;">
+    <button class="clear-btn" hx-post="/clear/messages" hx-confirm="Clear all messages?" hx-swap="none">Clear Messages</button>
+    <button class="clear-btn" hx-post="/clear/calls" hx-confirm="Clear all calls?" hx-swap="none">Clear Calls</button>
+    <button class="clear-btn" hx-post="/clear/callbacks" hx-confirm="Clear all callbacks?" hx-swap="none">Clear Callbacks</button>
+    <button class="clear-btn clear-all" hx-post="/clear/all" hx-confirm="Clear ALL data? This cannot be undone!" hx-swap="none">Clear All</button>
+</div>
+</div>
