@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import httpx
 
@@ -44,6 +44,9 @@ class CallbackHandler:
         Returns:
             Tuple of (success, status_code, response_body)
         """
+        # Extract status for logging
+        status_type = payload.get("MessageStatus") or payload.get("CallStatus", "unknown")
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
@@ -53,8 +56,8 @@ class CallbackHandler:
                 )
 
                 logger.info(
-                    f"Callback sent to {url} (attempt {attempt}): "
-                    f"status={response.status_code}"
+                    f"Callback sent to {url} for status '{status_type}' (attempt {attempt}): "
+                    f"HTTP {response.status_code}"
                 )
 
                 # Log callback attempt
@@ -70,7 +73,9 @@ class CallbackHandler:
                 return (200 <= response.status_code < 300), response.status_code, response.text
 
         except Exception as e:
-            logger.error(f"Callback failed to {url} (attempt {attempt}): {str(e)}")
+            logger.error(
+                f"Callback failed to {url} for status '{status_type}' (attempt {attempt}): {str(e)}"
+            )
 
             # Log failed callback attempt
             self.storage.create_callback_log(
@@ -99,6 +104,7 @@ class CallbackHandler:
         """
         max_attempts = self.config.twilio.callbacks.retry_attempts
         retry_delay = self.config.twilio.callbacks.retry_delay_seconds
+        status_type = payload.get("MessageStatus") or payload.get("CallStatus", "unknown")
 
         for attempt in range(1, max_attempts + 1):
             success, status_code, response_body = await self.send_callback(
@@ -112,7 +118,9 @@ class CallbackHandler:
             if attempt < max_attempts:
                 await asyncio.sleep(retry_delay)
 
-        logger.warning(f"All callback attempts failed for {url}")
+        logger.warning(
+            f"All {max_attempts} callback attempts failed for status '{status_type}' to {url}"
+        )
         return False
 
     async def process_message_callbacks(
@@ -120,7 +128,7 @@ class CallbackHandler:
         message_sid: str,
         from_number: str,
         to_number: str,
-        callback_url: str | None,
+        callback_url: Optional[str],
         will_succeed: bool,
     ) -> None:
         """Process message status updates and callbacks.
@@ -198,7 +206,7 @@ class CallbackHandler:
         call_sid: str,
         from_number: str,
         to_number: str,
-        callback_url: str | None,
+        callback_url: Optional[str],
         will_succeed: bool,
     ) -> None:
         """Process call status updates and callbacks.
