@@ -1,4 +1,5 @@
 """Tests for template engine module."""
+
 import json
 import string
 
@@ -187,28 +188,36 @@ class TestRenderMethods:
         responses_path.mkdir(parents=True)
 
         message_template = responses_path / "message.json"
-        message_template.write_text(json.dumps({
-            "sid": "{{ message_sid }}",
-            "account_sid": "{{ account_sid }}",
-            "from": "{{ request.From }}",
-            "to": "{{ request.To }}",
-            "body": "{{ request.Body }}",
-            "status": "{{ status }}",
-            "num_segments": "{{ num_segments }}",
-            "date_created": "{{ date_created }}",
-            "date_updated": "{{ date_updated }}"
-        }))
+        message_template.write_text(
+            json.dumps(
+                {
+                    "sid": "{{ message_sid }}",
+                    "account_sid": "{{ account_sid }}",
+                    "from": "{{ request.From }}",
+                    "to": "{{ request.To }}",
+                    "body": "{{ request.Body }}",
+                    "status": "{{ status }}",
+                    "num_segments": "{{ num_segments }}",
+                    "date_created": "{{ date_created }}",
+                    "date_updated": "{{ date_updated }}",
+                }
+            )
+        )
 
         # Create error templates
         errors_path = tmp_path / "errors" / "twilio"
         errors_path.mkdir(parents=True)
 
         error_template = errors_path / "error.json"
-        error_template.write_text(json.dumps({
-            "code": "{{ code }}",
-            "message": "{{ message }}",
-            "status": "{{ status }}"
-        }))
+        error_template.write_text(
+            json.dumps(
+                {
+                    "code": "{{ code }}",
+                    "message": "{{ message }}",
+                    "status": "{{ status }}",
+                }
+            )
+        )
 
         return TemplateEngine(str(tmp_path / "responses"))
 
@@ -221,10 +230,10 @@ class TestRenderMethods:
             "request": {
                 "From": "+1234567890",
                 "To": "+0987654321",
-                "Body": "Test message"
+                "Body": "Test message",
             },
             "status": "queued",
-            "num_segments": 1
+            "num_segments": 1,
         }
 
         result = engine_with_templates.render_response("message.json", context)
@@ -242,11 +251,7 @@ class TestRenderMethods:
     @freeze_time("2024-01-15 10:30:00")
     def test_render_error(self, engine_with_templates):
         """Test rendering error template."""
-        context = {
-            "code": 21211,
-            "message": "Invalid phone number",
-            "status": 400
-        }
+        context = {"code": 21211, "message": "Invalid phone number", "status": 400}
 
         result = engine_with_templates.render_error("error.json", context)
 
@@ -271,17 +276,13 @@ class TestCreateMessageContext:
     @freeze_time("2024-01-15 10:30:00")
     def test_create_message_context_basic(self, engine):
         """Test creating basic message context."""
-        request_data = {
-            "From": "+1234567890",
-            "To": "+0987654321",
-            "Body": "Hello"
-        }
+        request_data = {"From": "+1234567890", "To": "+0987654321", "Body": "Hello"}
 
         context = engine.create_message_context(
             message_sid="SM123",
             account_sid="AC456",
             request_data=request_data,
-            status="queued"
+            status="queued",
         )
 
         assert context["message_sid"] == "SM123"
@@ -293,16 +294,10 @@ class TestCreateMessageContext:
 
     def test_create_message_context_multi_segment(self, engine):
         """Test creating message context with multi-segment message."""
-        request_data = {
-            "From": "+1234567890",
-            "To": "+0987654321",
-            "Body": "a" * 200
-        }
+        request_data = {"From": "+1234567890", "To": "+0987654321", "Body": "a" * 200}
 
         context = engine.create_message_context(
-            message_sid="SM123",
-            account_sid="AC456",
-            request_data=request_data
+            message_sid="SM123", account_sid="AC456", request_data=request_data
         )
 
         assert context["num_segments"] == 2
@@ -326,14 +321,14 @@ class TestCreateCallContext:
         request_data = {
             "From": "+1234567890",
             "To": "+0987654321",
-            "Url": "http://example.com/twiml"
+            "Url": "http://example.com/twiml",
         }
 
         context = engine.create_call_context(
             call_sid="CA123",
             account_sid="AC456",
             request_data=request_data,
-            status="queued"
+            status="queued",
         )
 
         assert context["call_sid"] == "CA123"
@@ -363,7 +358,7 @@ class TestCreateDeliveryStatusContext:
             account_sid="AC456",
             from_number="+1234567890",
             to_number="+0987654321",
-            status="delivered"
+            status="delivered",
         )
 
         assert context["MessageSid"] == "SM123"

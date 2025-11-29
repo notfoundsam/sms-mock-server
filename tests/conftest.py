@@ -1,4 +1,5 @@
 """Shared pytest fixtures for SMS Mock Server tests."""
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -11,10 +12,7 @@ from app.template_engine import TemplateEngine
 def test_config_dict():
     """Return a test configuration dictionary."""
     return {
-        "server": {
-            "host": "0.0.0.0",
-            "port": 8080
-        },
+        "server": {"host": "0.0.0.0", "port": 8080},
         "provider": "twilio",
         "twilio": {
             "account_sid": "AC" + "x" * 32,
@@ -23,36 +21,21 @@ def test_config_dict():
                 "require_auth": True,
                 "validate_phone_format": True,
                 "check_from_numbers": True,
-                "require_parameters": True
+                "require_parameters": True,
             },
             "default_behavior": "success",
-            "registered_numbers": [
-                "+1111111111",
-                "+15551234567",
-                "+15559876543"
-            ],
-            "allowed_from_numbers": [
-                "+15550000001",
-                "+15550000002",
-                "+1234567890"
-            ],
-            "failure_numbers": [
-                "+2222222222",
-                "+15559999999"
-            ],
+            "registered_numbers": ["+1111111111", "+15551234567", "+15559876543"],
+            "allowed_from_numbers": ["+15550000001", "+15550000002", "+1234567890"],
+            "failure_numbers": ["+2222222222", "+15559999999"],
             "callbacks": {
                 "enabled": True,
                 "delay_seconds": 2,
                 "retry_attempts": 3,
-                "retry_delay_seconds": 5
-            }
+                "retry_delay_seconds": 5,
+            },
         },
-        "database": {
-            "path": ":memory:"
-        },
-        "templates": {
-            "path": "./templates/responses"
-        }
+        "database": {"path": ":memory:"},
+        "templates": {"path": "./templates/responses"},
     }
 
 
@@ -104,10 +87,7 @@ def test_template_engine(tmp_path):
     errors_dir = tmp_path / "templates" / "errors"
     errors_dir.mkdir(parents=True, exist_ok=True)
 
-    return TemplateEngine(
-        templates_path=str(templates_dir),
-        provider="twilio"
-    )
+    return TemplateEngine(templates_path=str(templates_dir), provider="twilio")
 
 
 @pytest.fixture
@@ -137,7 +117,7 @@ def sample_message_data():
         "From": "+15550000001",
         "To": "+15551234567",
         "Body": "Test message",
-        "StatusCallback": "http://localhost:8080/callback-test"
+        "StatusCallback": "http://localhost:8080/callback-test",
     }
 
 
@@ -148,7 +128,7 @@ def sample_call_data():
         "From": "+15550000001",
         "To": "+15551234567",
         "Url": "http://example.com/twiml",
-        "StatusCallback": "http://localhost:8080/callback-test"
+        "StatusCallback": "http://localhost:8080/callback-test",
     }
 
 
@@ -156,9 +136,8 @@ def sample_call_data():
 def mock_basic_auth():
     """Mock basic auth header."""
     import base64
+
     account_sid = "AC" + "x" * 32
     auth_token = "test_auth_token_12345"
-    credentials = base64.b64encode(
-        f"{account_sid}:{auth_token}".encode()
-    ).decode()
+    credentials = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
     return f"Basic {credentials}"

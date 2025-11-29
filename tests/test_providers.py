@@ -1,4 +1,5 @@
 """Tests for providers module."""
+
 from app.config import TwilioConfig
 from app.providers.twilio import TwilioProvider
 
@@ -8,10 +9,12 @@ class TestTwilioProviderInitialization:
 
     def test_init_with_config(self):
         """Test TwilioProvider initialization with config."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+            }
+        )
 
         provider = TwilioProvider(config)
         assert provider.config == config
@@ -22,11 +25,13 @@ class TestValidateAuth:
 
     def test_validate_auth_success(self):
         """Test successful authentication."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-            "validation": {"require_auth": True},
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+                "validation": {"require_auth": True},
+            }
+        )
 
         provider = TwilioProvider(config)
         is_valid, error = provider.validate_auth("AC123", "token123")
@@ -36,11 +41,13 @@ class TestValidateAuth:
 
     def test_validate_auth_wrong_credentials(self):
         """Test authentication with wrong credentials."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-            "validation": {"require_auth": True},
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+                "validation": {"require_auth": True},
+            }
+        )
 
         provider = TwilioProvider(config)
         is_valid, error = provider.validate_auth("WRONG", "wrong")
@@ -51,11 +58,13 @@ class TestValidateAuth:
 
     def test_validate_auth_missing_username(self):
         """Test authentication with missing username."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-            "validation": {"require_auth": True},
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+                "validation": {"require_auth": True},
+            }
+        )
 
         provider = TwilioProvider(config)
         is_valid, error = provider.validate_auth(None, "token123")
@@ -66,11 +75,13 @@ class TestValidateAuth:
 
     def test_validate_auth_missing_password(self):
         """Test authentication with missing password."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-            "validation": {"require_auth": True},
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+                "validation": {"require_auth": True},
+            }
+        )
 
         provider = TwilioProvider(config)
         is_valid, error = provider.validate_auth("AC123", None)
@@ -81,11 +92,13 @@ class TestValidateAuth:
 
     def test_validate_auth_disabled(self):
         """Test authentication when auth is disabled."""
-        config = TwilioConfig({
-            "account_sid": "AC123",
-            "auth_token": "token123",
-            "validation": {"require_auth": False},
-        })
+        config = TwilioConfig(
+            {
+                "account_sid": "AC123",
+                "auth_token": "token123",
+                "validation": {"require_auth": False},
+            }
+        )
 
         provider = TwilioProvider(config)
         is_valid, error = provider.validate_auth(None, None)
@@ -221,10 +234,12 @@ class TestValidateFromNumber:
 
     def test_validate_from_number_in_allowed_list(self):
         """Test validation with number in allowed list."""
-        config = TwilioConfig({
-            "validation": {"check_from_numbers": True},
-            "allowed_from_numbers": ["+12125551234", "+12125555678"],
-        })
+        config = TwilioConfig(
+            {
+                "validation": {"check_from_numbers": True},
+                "allowed_from_numbers": ["+12125551234", "+12125555678"],
+            }
+        )
         provider = TwilioProvider(config)
 
         is_valid, error = provider.validate_from_number("+12125551234")
@@ -234,10 +249,12 @@ class TestValidateFromNumber:
 
     def test_validate_from_number_not_in_allowed_list(self):
         """Test validation with number not in allowed list."""
-        config = TwilioConfig({
-            "validation": {"check_from_numbers": True},
-            "allowed_from_numbers": ["+12125551234"],
-        })
+        config = TwilioConfig(
+            {
+                "validation": {"check_from_numbers": True},
+                "allowed_from_numbers": ["+12125551234"],
+            }
+        )
         provider = TwilioProvider(config)
 
         is_valid, error = provider.validate_from_number("+19995551234")
@@ -249,10 +266,12 @@ class TestValidateFromNumber:
 
     def test_validate_from_number_disabled(self):
         """Test validation when from number check is disabled."""
-        config = TwilioConfig({
-            "validation": {"check_from_numbers": False},
-            "allowed_from_numbers": [],
-        })
+        config = TwilioConfig(
+            {
+                "validation": {"check_from_numbers": False},
+                "allowed_from_numbers": [],
+            }
+        )
         provider = TwilioProvider(config)
 
         is_valid, error = provider.validate_from_number("+19995551234")
@@ -266,11 +285,13 @@ class TestShouldSucceed:
 
     def test_should_succeed_in_failure_list(self):
         """Test should_succeed with number in failure list."""
-        config = TwilioConfig({
-            "default_behavior": "success",
-            "registered_numbers": ["+11111111111"],
-            "failure_numbers": ["+12222222222"],
-        })
+        config = TwilioConfig(
+            {
+                "default_behavior": "success",
+                "registered_numbers": ["+11111111111"],
+                "failure_numbers": ["+12222222222"],
+            }
+        )
         provider = TwilioProvider(config)
 
         # Failure numbers have highest priority
@@ -278,44 +299,52 @@ class TestShouldSucceed:
 
     def test_should_succeed_in_registered_list(self):
         """Test should_succeed with number in registered list."""
-        config = TwilioConfig({
-            "default_behavior": "failure",
-            "registered_numbers": ["+11111111111"],
-            "failure_numbers": [],
-        })
+        config = TwilioConfig(
+            {
+                "default_behavior": "failure",
+                "registered_numbers": ["+11111111111"],
+                "failure_numbers": [],
+            }
+        )
         provider = TwilioProvider(config)
 
         assert provider.should_succeed("+11111111111") is True
 
     def test_should_succeed_default_success(self):
         """Test should_succeed with unknown number and default_behavior=success."""
-        config = TwilioConfig({
-            "default_behavior": "success",
-            "registered_numbers": [],
-            "failure_numbers": [],
-        })
+        config = TwilioConfig(
+            {
+                "default_behavior": "success",
+                "registered_numbers": [],
+                "failure_numbers": [],
+            }
+        )
         provider = TwilioProvider(config)
 
         assert provider.should_succeed("+19995551234") is True
 
     def test_should_succeed_default_failure(self):
         """Test should_succeed with unknown number and default_behavior=failure."""
-        config = TwilioConfig({
-            "default_behavior": "failure",
-            "registered_numbers": [],
-            "failure_numbers": [],
-        })
+        config = TwilioConfig(
+            {
+                "default_behavior": "failure",
+                "registered_numbers": [],
+                "failure_numbers": [],
+            }
+        )
         provider = TwilioProvider(config)
 
         assert provider.should_succeed("+19995551234") is False
 
     def test_should_succeed_priority_failure_over_registered(self):
         """Test that failure list takes priority over registered list."""
-        config = TwilioConfig({
-            "default_behavior": "success",
-            "registered_numbers": ["+11111111111"],
-            "failure_numbers": ["+11111111111"],
-        })
+        config = TwilioConfig(
+            {
+                "default_behavior": "success",
+                "registered_numbers": ["+11111111111"],
+                "failure_numbers": ["+11111111111"],
+            }
+        )
         provider = TwilioProvider(config)
 
         # Failure should win

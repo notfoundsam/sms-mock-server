@@ -1,4 +1,5 @@
 """Tests for callbacks module."""
+
 import pytest
 import respx
 from httpx import Response
@@ -351,9 +352,7 @@ class TestProcessCallCallbacks:
         respx.post(callback_url).mock(return_value=Response(200, text="OK"))
 
         # Create initial call
-        test_storage.create_call(
-            call_sid, "twilio", from_number, to_number, "queued"
-        )
+        test_storage.create_call(call_sid, "twilio", from_number, to_number, "queued")
 
         await handler.process_call_callbacks(
             call_sid, from_number, to_number, callback_url, will_succeed=True
@@ -384,9 +383,7 @@ class TestProcessCallCallbacks:
         respx.post(callback_url).mock(return_value=Response(200, text="OK"))
 
         # Create initial call
-        test_storage.create_call(
-            call_sid, "twilio", from_number, to_number, "queued"
-        )
+        test_storage.create_call(call_sid, "twilio", from_number, to_number, "queued")
 
         await handler.process_call_callbacks(
             call_sid, from_number, to_number, callback_url, will_succeed=False
@@ -408,9 +405,7 @@ class TestProcessCallCallbacks:
         to_number = "+9999999999"
 
         # Create initial call
-        test_storage.create_call(
-            call_sid, "twilio", from_number, to_number, "queued"
-        )
+        test_storage.create_call(call_sid, "twilio", from_number, to_number, "queued")
 
         await handler.process_call_callbacks(
             call_sid, from_number, to_number, None, will_succeed=True
@@ -433,9 +428,7 @@ class TestProcessCallCallbacks:
         to_number = "+1111111111"
 
         # Create initial call
-        test_storage.create_call(
-            call_sid, "twilio", from_number, to_number, "queued"
-        )
+        test_storage.create_call(call_sid, "twilio", from_number, to_number, "queued")
 
         await handler.process_call_callbacks(
             call_sid, from_number, to_number, None, will_succeed=True

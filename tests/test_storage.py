@@ -1,4 +1,5 @@
 """Tests for storage module."""
+
 import pytest
 
 from app.storage import Storage
@@ -26,7 +27,9 @@ class TestStorageInitialization:
         storage = Storage(str(db_path))
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"
+            )
             assert cursor.fetchone() is not None
 
     def test_init_creates_calls_table(self, tmp_path):
@@ -35,7 +38,9 @@ class TestStorageInitialization:
         storage = Storage(str(db_path))
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='calls'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='calls'"
+            )
             assert cursor.fetchone() is not None
 
     def test_init_creates_delivery_events_table(self, tmp_path):
@@ -44,7 +49,9 @@ class TestStorageInitialization:
         storage = Storage(str(db_path))
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_events'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_events'"
+            )
             assert cursor.fetchone() is not None
 
     def test_init_creates_callback_logs_table(self, tmp_path):
@@ -53,7 +60,9 @@ class TestStorageInitialization:
         storage = Storage(str(db_path))
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='callback_logs'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='callback_logs'"
+            )
             assert cursor.fetchone() is not None
 
 
@@ -136,9 +145,15 @@ class TestMessageOperations:
 
     def test_get_all_messages(self, storage):
         """Test getting all messages."""
-        storage.create_message("SM127", "twilio", "+1111111111", "+2222222222", "Msg 1", "sent")
-        storage.create_message("SM128", "twilio", "+1111111111", "+3333333333", "Msg 2", "sent")
-        storage.create_message("SM129", "twilio", "+1111111111", "+4444444444", "Msg 3", "sent")
+        storage.create_message(
+            "SM127", "twilio", "+1111111111", "+2222222222", "Msg 1", "sent"
+        )
+        storage.create_message(
+            "SM128", "twilio", "+1111111111", "+3333333333", "Msg 2", "sent"
+        )
+        storage.create_message(
+            "SM129", "twilio", "+1111111111", "+4444444444", "Msg 3", "sent"
+        )
 
         messages = storage.get_all_messages()
         assert len(messages) == 3
@@ -149,16 +164,24 @@ class TestMessageOperations:
     def test_get_all_messages_with_limit(self, storage):
         """Test getting messages with limit."""
         for i in range(10):
-            storage.create_message(f"SM{i}", "twilio", "+1111111111", "+2222222222", f"Msg {i}", "sent")
+            storage.create_message(
+                f"SM{i}", "twilio", "+1111111111", "+2222222222", f"Msg {i}", "sent"
+            )
 
         messages = storage.get_all_messages(limit=5)
         assert len(messages) == 5
 
     def test_get_all_messages_with_offset(self, storage):
         """Test getting messages with offset."""
-        storage.create_message("SM130", "twilio", "+1111111111", "+2222222222", "Msg 1", "sent")
-        storage.create_message("SM131", "twilio", "+1111111111", "+2222222222", "Msg 2", "sent")
-        storage.create_message("SM132", "twilio", "+1111111111", "+2222222222", "Msg 3", "sent")
+        storage.create_message(
+            "SM130", "twilio", "+1111111111", "+2222222222", "Msg 1", "sent"
+        )
+        storage.create_message(
+            "SM131", "twilio", "+1111111111", "+2222222222", "Msg 2", "sent"
+        )
+        storage.create_message(
+            "SM132", "twilio", "+1111111111", "+2222222222", "Msg 3", "sent"
+        )
 
         messages = storage.get_all_messages(limit=10, offset=1)
         assert len(messages) == 2
@@ -240,9 +263,15 @@ class TestCallOperations:
 
     def test_get_all_calls(self, storage):
         """Test getting all calls."""
-        storage.create_call("CA127", "twilio", "+1111111111", "+2222222222", "initiated")
-        storage.create_call("CA128", "twilio", "+1111111111", "+3333333333", "in-progress")
-        storage.create_call("CA129", "twilio", "+1111111111", "+4444444444", "completed")
+        storage.create_call(
+            "CA127", "twilio", "+1111111111", "+2222222222", "initiated"
+        )
+        storage.create_call(
+            "CA128", "twilio", "+1111111111", "+3333333333", "in-progress"
+        )
+        storage.create_call(
+            "CA129", "twilio", "+1111111111", "+4444444444", "completed"
+        )
 
         calls = storage.get_all_calls()
         assert len(calls) == 3
@@ -253,7 +282,9 @@ class TestCallOperations:
     def test_get_all_calls_with_pagination(self, storage):
         """Test getting calls with pagination."""
         for i in range(10):
-            storage.create_call(f"CA{i}", "twilio", "+1111111111", "+2222222222", "completed")
+            storage.create_call(
+                f"CA{i}", "twilio", "+1111111111", "+2222222222", "completed"
+            )
 
         calls = storage.get_all_calls(limit=3, offset=2)
         assert len(calls) == 3
@@ -346,9 +377,15 @@ class TestCallbackLogOperations:
 
     def test_get_all_callback_logs(self, storage):
         """Test getting all callback logs."""
-        storage.create_callback_log("http://example.com/1", '{"status": "delivered"}', 200, "OK", 1)
-        storage.create_callback_log("http://example.com/2", '{"status": "failed"}', 500, "Error", 1)
-        storage.create_callback_log("http://example.com/3", '{"status": "delivered"}', 200, "OK", 2)
+        storage.create_callback_log(
+            "http://example.com/1", '{"status": "delivered"}', 200, "OK", 1
+        )
+        storage.create_callback_log(
+            "http://example.com/2", '{"status": "failed"}', 500, "Error", 1
+        )
+        storage.create_callback_log(
+            "http://example.com/3", '{"status": "delivered"}', 200, "OK", 2
+        )
 
         logs = storage.get_all_callback_logs()
         assert len(logs) == 3
@@ -416,7 +453,9 @@ class TestClearOperations:
 
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE message_sid IS NOT NULL")
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM delivery_events WHERE message_sid IS NOT NULL"
+            )
             event_count = cursor.fetchone()["count"]
 
         assert event_count == 0
@@ -435,7 +474,9 @@ class TestClearOperations:
 
         with storage._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE call_sid IS NOT NULL")
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM delivery_events WHERE call_sid IS NOT NULL"
+            )
             event_count = cursor.fetchone()["count"]
 
         assert event_count == 0
