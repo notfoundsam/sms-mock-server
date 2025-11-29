@@ -35,13 +35,13 @@ restart:
 test:
 	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q -r requirements-dev.txt && pytest tests/ -v"
 
-## lint: Run Ruff linter
+## lint: Run Ruff linter and format check
 lint:
-	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check app/ tests/"
+	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check app/ tests/ && ruff format --check app/ tests/"
 
-## lint-fix: Run Ruff linter with auto-fix
-lint-fix:
-	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check --fix app/ tests/"
+## fix: Auto-fix lint issues and format code
+fix:
+	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check --fix app/ tests/ && ruff format app/ tests/"
 
 ## seed: Seed database with sample messages and calls
 seed:
