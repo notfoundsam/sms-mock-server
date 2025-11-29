@@ -3,7 +3,7 @@ services:
     build: .
     container_name: sms-mock-server
     ports:
-      - "9090:8080"
+      - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./templates:/app/templates
