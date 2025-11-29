@@ -1,29 +1,5 @@
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
-ENV/
-env/
+tests/__pycache__/
 
 # IDEs
 .vscode/
@@ -32,21 +8,12 @@ env/
 *.swo
 *~
 
-# Database
-data/*.db
-data/*.db-journal
-
 # Logs
 *.log
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Test
-.pytest_cache/
-.coverage
-htmlcov/
 
 # Environment
 .env
