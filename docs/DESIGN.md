@@ -473,9 +473,16 @@ validation:
 │           ├── message_detail.html    # Modal content
 │           ├── call_detail.html       # Modal content
 │           └── pagination.html        # Reusable pagination controls
-└── data/
-    └── mock_server.db
+├── scripts/
+│   └── seed_data.sh                   # Sample data seeder
+├── tests/                             # Test suite
+├── docs/                              # Documentation
+├── Makefile                           # Build automation
+├── ruff.toml                          # Linter configuration
+└── pytest.ini                         # Test configuration
 ```
+
+Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persistence.
 
 ### 5.2 Response Template Example
 **File**: `templates/responses/twilio/send_sms_success.json`
@@ -851,8 +858,6 @@ When running the mock server in Docker and your application in another container
 
 **Docker Compose Example:**
 ```yaml
-version: '3.8'
-
 services:
   sms-mock-server:
     build: .
@@ -941,7 +946,6 @@ TWILIO_API_BASE_URL=http://localhost:8080
 
 **Basic Setup:**
 ```yaml
-version: '3.8'
 services:
   sms-mock-server:
     build: .
@@ -958,8 +962,6 @@ services:
 
 **With Application Stack:**
 ```yaml
-version: '3.8'
-
 services:
   sms-mock-server:
     build: ./sms-mock-server

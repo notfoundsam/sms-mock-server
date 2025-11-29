@@ -33,10 +33,9 @@ open http://localhost:8080
 
 ```bash
 # Using the provided docker-compose.yml
-docker-compose up -d
+docker compose up -d
 
 # Or create your own docker-compose.yml:
-version: '3.8'
 services:
   sms-mock-server:
     image: notfoundsam/sms-mock-server:latest
@@ -55,7 +54,7 @@ git clone <repository-url>
 cd sms-mock-server
 
 # Build and run
-docker-compose up -d
+make install
 ```
 
 ### Option 4: Local Python
@@ -297,8 +296,6 @@ When you send an SMS/call with a `StatusCallback` URL, the mock server will:
 ## Docker Compose with Your App
 
 ```yaml
-version: '3.8'
-
 services:
   sms-mock-server:
     build: ./sms-mock-server
@@ -336,12 +333,34 @@ The mock server emulates common Twilio errors:
 
 ## Development
 
+### Makefile Commands
+
+```bash
+make install    # Build and start the application
+make up         # Start the application
+make stop       # Stop the application
+make restart    # Restart the application
+make test       # Run tests
+make lint       # Run Ruff linter
+make lint-fix   # Run Ruff linter with auto-fix
+make seed       # Seed database with sample data
+make clean      # Stop and remove volumes
+make logs       # Show application logs
+make help       # Show all commands
+```
+
+### Local Development (without Docker)
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Run tests
 pytest
+
+# Run linter
+ruff check app/ tests/
 
 # Run server with auto-reload
 uvicorn app.main:app --reload --port 8080
@@ -365,11 +384,20 @@ sms-mock-server/
 │   ├── responses/twilio/    # JSON response templates
 │   ├── errors/twilio/       # JSON error templates
 │   └── ui/                  # HTML templates
-├── data/                    # SQLite database
+├── tests/                   # Test suite
+├── scripts/
+│   └── seed_data.sh         # Sample data seeder
+├── docs/
+│   ├── DESIGN.md            # Architecture documentation
+│   └── dashboard.png        # UI screenshot
 ├── config.yaml              # Server configuration
+├── Makefile                 # Build automation
 ├── Dockerfile
 ├── docker-compose.yml
-└── requirements.txt
+├── requirements.txt
+├── requirements-dev.txt     # Dev dependencies (pytest, ruff)
+├── ruff.toml                # Linter configuration
+└── pytest.ini               # Test configuration
 ```
 
 ## Troubleshooting
@@ -391,7 +419,7 @@ sms-mock-server/
 
 ## License
 
-MIT License - See DESIGN.md for architecture details
+MIT License - See [docs/DESIGN.md](docs/DESIGN.md) for architecture details
 
 ## Contributing
 
