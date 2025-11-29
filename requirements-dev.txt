@@ -15,3 +15,6 @@ respx==0.22.0
 
 # Time mocking for tests
 freezegun==1.5.5
+
+# Linting
+ruff==0.8.6

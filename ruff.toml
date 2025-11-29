@@ -1,0 +1,41 @@
+# Ruff configuration for SMS Mock Server
+# https://docs.astral.sh/ruff/configuration/
+
+# Target Python version
+target-version = "py313"
+
+# Line length (match common Python standards)
+line-length = 100
+
+# Exclude common directories
+exclude = [
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    "htmlcov",
+    "venv",
+]
+
+[lint]
+# Enable rules
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade (modern Python syntax)
+    "B",      # flake8-bugbear (common bugs)
+    "SIM",    # flake8-simplify
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",   # line too long (handled by formatter if needed)
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+
+[lint.isort]
+# Group imports: standard library, third-party, local
+known-first-party = ["app"]
