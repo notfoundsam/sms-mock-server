@@ -1030,7 +1030,7 @@ To add a new provider (e.g., MessageBird, Vonage):
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| Language | Python 3.11+ | Rapid development, excellent libraries |
+| Language | Python 3.13+ | Rapid development, excellent libraries |
 | Web Framework | FastAPI | Modern, async, auto-documentation |
 | Template Engine | Jinja2 | Variable substitution, server-side rendering |
 | Database | SQLite | Lightweight, file-based, no external dependencies |

@@ -1,35 +1,24 @@
 # Multi-stage build for SMS Mock Server
 
 # Stage 1: Base image with dependencies
-FROM python:3.11-slim as base
+FROM python:3.13-alpine as base
 
 # Set working directory
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final image
-FROM python:3.11-slim
+FROM python:3.13-alpine
 
 # Set working directory
 WORKDIR /app
 
 # Copy Python dependencies from base stage
-COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=base /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
-
-# Install curl for health checks
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy application code
 COPY app/ ./app/
@@ -43,9 +32,9 @@ RUN mkdir -p data
 # Expose ports
 EXPOSE 8080
 
-# Health check
+# Health check (using wget which is built into Alpine)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD wget -q --spider http://localhost:8080/health || exit 1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
