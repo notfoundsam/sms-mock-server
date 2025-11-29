@@ -1,5 +1,5 @@
 """Twilio provider implementation for SMS Mock Server."""
-from typing import Any
+from typing import Any, override
 
 import phonenumbers
 
@@ -18,16 +18,19 @@ class TwilioProvider(BaseProvider):
         """
         self.config = config
 
+    @override
     def send_sms(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process SMS sending request (implementation in main app)."""
         # This is handled by the API layer
         pass
 
+    @override
     def make_call(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process call making request (implementation in main app)."""
         # This is handled by the API layer
         pass
 
+    @override
     def validate_auth(
         self, username: str | None, password: str | None
     ) -> tuple[bool, dict[str, Any] | None]:
@@ -57,6 +60,7 @@ class TwilioProvider(BaseProvider):
 
         return True, None
 
+    @override
     def validate_parameters(
         self, request_data: dict[str, Any], required_params: list
     ) -> tuple[bool, dict[str, Any] | None]:
@@ -82,6 +86,7 @@ class TwilioProvider(BaseProvider):
 
         return True, None
 
+    @override
     def validate_phone_number(
         self, number: str, field_name: str
     ) -> tuple[bool, dict[str, Any] | None]:
@@ -116,6 +121,7 @@ class TwilioProvider(BaseProvider):
 
         return True, None
 
+    @override
     def validate_from_number(
         self, number: str
     ) -> tuple[bool, dict[str, Any] | None]:
@@ -139,6 +145,7 @@ class TwilioProvider(BaseProvider):
 
         return True, None
 
+    @override
     def should_succeed(self, to_number: str) -> bool:
         """Determine if message/call should succeed based on To number.
 
@@ -164,6 +171,7 @@ class TwilioProvider(BaseProvider):
         # Fall back to default behavior
         return self.config.default_behavior == "success"
 
+    @override
     def get_response_template(self, action: str, success: bool) -> str:
         """Get template name for response.
 
@@ -177,6 +185,7 @@ class TwilioProvider(BaseProvider):
         status = "success" if success else "failure"
         return f"{action}_{status}.json"
 
+    @override
     def get_error_template(self, error_type: str) -> str:
         """Get template name for error response.
 
