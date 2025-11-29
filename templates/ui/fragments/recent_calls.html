@@ -17,7 +17,7 @@
             <td class="phone">{{ call.from_number }}</td>
             <td class="phone">{{ call.to_number }}</td>
             <td><span class="status {{ call.status }}">{{ call.status }}</span></td>
-            <td class="timestamp">{{ call.created_at }}</td>
+            <td class="timestamp">{{ call.created_at|tz }}</td>
         </tr>
         {% endfor %}
     </tbody>

@@ -76,6 +76,7 @@ Edit `config.yaml` to customize the mock server behavior:
 server:
   host: 0.0.0.0
   port: 8080
+  timezone: UTC  # Timezone for UI date display (e.g., America/New_York, Asia/Tokyo)
 
 provider: twilio
 
@@ -270,6 +271,8 @@ POST /clear/all         # Clear all data
 ## Web UI
 
 Access the web UI at `http://localhost:8080`:
+
+![Dashboard Screenshot](docs/dashboard.png)
 
 - **Dashboard** - Overview with statistics and recent activity (auto-refreshes every 3 seconds)
 - **Messages** - Paginated list of all SMS messages (50 per page) with click-to-view details modal

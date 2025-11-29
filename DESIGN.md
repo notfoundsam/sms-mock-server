@@ -199,6 +199,7 @@ CREATE TABLE callback_logs (
 server:
   host: 0.0.0.0
   port: 8080
+  timezone: UTC  # Timezone for UI date display (e.g., America/New_York, Asia/Tokyo)
 
 provider: twilio  # Current active provider
 

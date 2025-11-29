@@ -1,6 +1,9 @@
 """Web UI routes for SMS Mock Server."""
 import json
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -25,6 +28,43 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         storage: Storage instance
         config: Configuration instance
     """
+    # Get configured timezone
+    tz_name = config.server.timezone
+    try:
+        target_tz = ZoneInfo(tz_name)
+    except Exception:
+        logger.warning(f"Invalid timezone '{tz_name}', falling back to UTC")
+        target_tz = ZoneInfo("UTC")
+        tz_name = "UTC"
+
+    def format_datetime(value):
+        """Convert UTC timestamp to configured timezone.
+
+        Args:
+            value: Timestamp string from SQLite (UTC)
+
+        Returns:
+            Formatted datetime string in configured timezone
+        """
+        if not value:
+            return ""
+        try:
+            # Parse SQLite timestamp (format: YYYY-MM-DD HH:MM:SS)
+            dt = datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+            # Assume it's UTC
+            dt_utc = dt.replace(tzinfo=ZoneInfo("UTC"))
+            # Convert to target timezone
+            dt_local = dt_utc.astimezone(target_tz)
+            # Format for display
+            return dt_local.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Failed to parse datetime '{value}': {e}")
+            return str(value)
+
+    # Register the filter with Jinja2
+    templates.env.filters["tz"] = format_datetime
+    # Also make timezone name available globally
+    templates.env.globals["timezone"] = tz_name
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):

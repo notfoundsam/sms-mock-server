@@ -37,7 +37,7 @@
                 {% endif %}
             </td>
             <td>{{ callback.attempt_number }}</td>
-            <td class="timestamp">{{ callback.created_at }}</td>
+            <td class="timestamp">{{ callback.created_at|tz }}</td>
         </tr>
         {% endfor %}
     </tbody>

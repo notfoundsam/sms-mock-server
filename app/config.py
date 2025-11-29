@@ -17,6 +17,7 @@ class ServerConfig:
     def __init__(self, data: Dict[str, Any]):
         self.host: str = data.get("host", "0.0.0.0")
         self.port: int = data.get("port", 8080)
+        self.timezone: str = data.get("timezone", "UTC")
 
 
 class ValidationConfig:

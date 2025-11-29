@@ -27,13 +27,15 @@ class TestServerConfig:
         config = ServerConfig({})
         assert config.host == "0.0.0.0"
         assert config.port == 8080
+        assert config.timezone == "UTC"
 
     def test_custom_values(self):
         """Test ServerConfig with custom values."""
-        data = {"host": "127.0.0.1", "port": 9000}
+        data = {"host": "127.0.0.1", "port": 9000, "timezone": "America/New_York"}
         config = ServerConfig(data)
         assert config.host == "127.0.0.1"
         assert config.port == 9000
+        assert config.timezone == "America/New_York"
 
     def test_partial_values(self):
         """Test ServerConfig with partial custom values."""
@@ -41,6 +43,15 @@ class TestServerConfig:
         config = ServerConfig(data)
         assert config.host == "0.0.0.0"
         assert config.port == 3000
+        assert config.timezone == "UTC"
+
+    def test_custom_timezone_only(self):
+        """Test ServerConfig with only timezone set."""
+        data = {"timezone": "Asia/Tokyo"}
+        config = ServerConfig(data)
+        assert config.host == "0.0.0.0"
+        assert config.port == 8080
+        assert config.timezone == "Asia/Tokyo"
 
 
 class TestValidationConfig:

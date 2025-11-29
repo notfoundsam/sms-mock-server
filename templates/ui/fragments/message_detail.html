@@ -33,10 +33,10 @@
     </div>
     <div class="detail-row">
         <div class="detail-label">Created At</div>
-        <div class="detail-value timestamp">{{ message.created_at }}</div>
+        <div class="detail-value timestamp">{{ message.created_at|tz }}</div>
     </div>
     <div class="detail-row">
         <div class="detail-label">Updated At</div>
-        <div class="detail-value timestamp">{{ message.updated_at }}</div>
+        <div class="detail-value timestamp">{{ message.updated_at|tz }}</div>
     </div>
 </div>

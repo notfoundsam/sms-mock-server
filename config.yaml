@@ -1,8 +1,9 @@
 server:
   host: 0.0.0.0
   port: 8080
+  timezone: Asia/Tokyo  # Timezone for displaying dates in UI (e.g., UTC, America/New_York, Asia/Tokyo)
 
-provider: twilio  # Current active provider
+provider: twilio # Current active provider
 
 twilio:
   account_sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -10,10 +11,10 @@ twilio:
 
   # Validation settings
   validation:
-    require_auth: false             # Validate auth token (disabled for testing)
-    validate_phone_format: false    # Check E.164 phone number format (disabled for testing)
-    check_from_numbers: false       # Require From number in allowed list (disabled for testing)
-    require_parameters: true        # Validate required parameters
+    require_auth: false # Validate auth token (disabled for testing)
+    validate_phone_format: false # Check E.164 phone number format (disabled for testing)
+    check_from_numbers: false # Require From number in allowed list (disabled for testing)
+    require_parameters: true # Validate required parameters
 
   # Behavior for numbers not in registered_numbers or failure_numbers
   # Options: "success" or "failure"
@@ -30,11 +31,11 @@ twilio:
 
   # Numbers that simulate failures
   failure_numbers:
-    - "+15559999999"  # Always fails
+    - "+15559999999" # Always fails
 
   callbacks:
     enabled: true
-    delay_seconds: 2  # Simulate delivery delay
+    delay_seconds: 2 # Simulate delivery delay
     retry_attempts: 3
     retry_delay_seconds: 5
 
