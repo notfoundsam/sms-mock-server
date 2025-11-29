@@ -1,6 +1,6 @@
 """Tests for utility functions in app/main.py."""
-import pytest
 import base64
+
 from app.main import extract_basic_auth
 
 

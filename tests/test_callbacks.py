@@ -1,7 +1,4 @@
 """Tests for callbacks module."""
-import asyncio
-import json
-
 import pytest
 import respx
 from httpx import Response

@@ -1,6 +1,4 @@
 """Tests for providers module."""
-import pytest
-
 from app.config import TwilioConfig
 from app.providers.twilio import TwilioProvider
 

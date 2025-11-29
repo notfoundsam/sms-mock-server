@@ -1,9 +1,6 @@
 """Shared pytest fixtures for SMS Mock Server tests."""
 import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
-import asyncio
+from unittest.mock import AsyncMock, patch
 
 from app.config import Config
 from app.storage import Storage

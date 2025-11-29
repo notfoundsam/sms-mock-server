@@ -1,8 +1,6 @@
 """Tests for template engine module."""
 import json
 import string
-from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 from freezegun import freeze_time

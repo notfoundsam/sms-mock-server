@@ -1,7 +1,4 @@
 """Tests for storage module."""
-import sqlite3
-from pathlib import Path
-
 import pytest
 
 from app.storage import Storage
@@ -13,13 +10,13 @@ class TestStorageInitialization:
     def test_init_creates_database_file(self, tmp_path):
         """Test that Storage creates database file."""
         db_path = tmp_path / "test.db"
-        storage = Storage(str(db_path))
+        Storage(str(db_path))
         assert db_path.exists()
 
     def test_init_creates_parent_directories(self, tmp_path):
         """Test that Storage creates parent directories if they don't exist."""
         db_path = tmp_path / "nested" / "dir" / "test.db"
-        storage = Storage(str(db_path))
+        Storage(str(db_path))
         assert db_path.exists()
         assert db_path.parent.exists()
 
@@ -27,45 +24,37 @@ class TestStorageInitialization:
         """Test that Storage creates messages table."""
         db_path = tmp_path / "test.db"
         storage = Storage(str(db_path))
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
-        assert cursor.fetchone() is not None
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
+            assert cursor.fetchone() is not None
 
     def test_init_creates_calls_table(self, tmp_path):
         """Test that Storage creates calls table."""
         db_path = tmp_path / "test.db"
         storage = Storage(str(db_path))
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='calls'")
-        assert cursor.fetchone() is not None
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='calls'")
+            assert cursor.fetchone() is not None
 
     def test_init_creates_delivery_events_table(self, tmp_path):
         """Test that Storage creates delivery_events table."""
         db_path = tmp_path / "test.db"
         storage = Storage(str(db_path))
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_events'")
-        assert cursor.fetchone() is not None
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_events'")
+            assert cursor.fetchone() is not None
 
     def test_init_creates_callback_logs_table(self, tmp_path):
         """Test that Storage creates callback_logs table."""
         db_path = tmp_path / "test.db"
         storage = Storage(str(db_path))
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='callback_logs'")
-        assert cursor.fetchone() is not None
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='callback_logs'")
+            assert cursor.fetchone() is not None
 
 
 class TestMessageOperations:
@@ -316,11 +305,10 @@ class TestDeliveryEventOperations:
             callback_response="OK",
         )
 
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM delivery_events WHERE id = ?", (event_id,))
-        event = dict(cursor.fetchone())
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM delivery_events WHERE id = ?", (event_id,))
+            event = dict(cursor.fetchone())
 
         assert event["callback_sent"] == 1
         assert event["callback_response"] == "OK"
@@ -426,11 +414,10 @@ class TestClearOperations:
         messages = storage.get_all_messages()
         assert len(messages) == 0
 
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE message_sid IS NOT NULL")
-        event_count = cursor.fetchone()["count"]
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE message_sid IS NOT NULL")
+            event_count = cursor.fetchone()["count"]
 
         assert event_count == 0
 
@@ -446,11 +433,10 @@ class TestClearOperations:
         calls = storage.get_all_calls()
         assert len(calls) == 0
 
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE call_sid IS NOT NULL")
-        event_count = cursor.fetchone()["count"]
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM delivery_events WHERE call_sid IS NOT NULL")
+            event_count = cursor.fetchone()["count"]
 
         assert event_count == 0
 
@@ -486,10 +472,9 @@ class TestClearOperations:
         assert len(storage.get_all_calls()) == 0
         assert len(storage.get_all_callback_logs()) == 0
 
-        conn = storage._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM delivery_events")
-        event_count = cursor.fetchone()["count"]
-        conn.close()
+        with storage._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM delivery_events")
+            event_count = cursor.fetchone()["count"]
 
         assert event_count == 0

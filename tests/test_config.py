@@ -1,8 +1,4 @@
 """Tests for configuration module."""
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
 import yaml
 
@@ -380,7 +376,7 @@ class TestConfig:
         with open(config_file, "w") as f:
             yaml.dump(config_data, f)
 
-        config = Config(str(config_file))
+        Config(str(config_file))
         assert db_dir.exists()
 
     def test_config_from_env_variable(self, tmp_path, monkeypatch):
