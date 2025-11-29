@@ -1,6 +1,5 @@
 """Twilio provider implementation for SMS Mock Server."""
-import re
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import phonenumbers
 

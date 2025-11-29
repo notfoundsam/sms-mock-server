@@ -1,10 +1,10 @@
 """Main FastAPI application for SMS Mock Server."""
 import base64
 import logging
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -45,7 +45,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 setup_ui_routes(app, storage, config)
 
 
-def extract_basic_auth(authorization: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def extract_basic_auth(authorization: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """Extract username and password from Basic Auth header.
 
     Args:
@@ -64,8 +64,73 @@ def extract_basic_auth(authorization: Optional[str]) -> tuple[Optional[str], Opt
         credentials = base64.b64decode(authorization[6:]).decode("utf-8")
         username, password = credentials.split(":", 1)
         return username, password
-    except Exception:
+    except (ValueError, UnicodeDecodeError):
         return None, None
+
+
+def validate_request(
+    username: Optional[str],
+    password: Optional[str],
+    request_data: Dict[str, str],
+    required_params: List[str],
+) -> Optional[JSONResponse]:
+    """Validate authentication, parameters, and phone numbers.
+
+    Args:
+        username: Basic auth username
+        password: Basic auth password
+        request_data: Form data from request
+        required_params: List of required parameter names
+
+    Returns:
+        JSONResponse with error if validation fails, None if valid
+    """
+    # Validate authentication
+    is_valid, error = provider.validate_auth(username, password)
+    if not is_valid:
+        return JSONResponse(
+            status_code=error["http_status"],
+            content=template_engine.render_error(
+                provider.get_error_template(error["error_type"]),
+                error,
+            ),
+        )
+
+    # Validate required parameters
+    is_valid, error = provider.validate_parameters(request_data, required_params)
+    if not is_valid:
+        return JSONResponse(
+            status_code=error["http_status"],
+            content=template_engine.render_error(
+                provider.get_error_template(error["error_type"]),
+                error,
+            ),
+        )
+
+    # Validate phone number formats
+    for field in ["From", "To"]:
+        is_valid, error = provider.validate_phone_number(request_data[field], field)
+        if not is_valid:
+            return JSONResponse(
+                status_code=error["http_status"],
+                content=template_engine.render_error(
+                    provider.get_error_template(error["error_type"]),
+                    error,
+                ),
+            )
+
+    # Validate From number is in allowed list
+    is_valid, error = provider.validate_from_number(request_data["From"])
+    if not is_valid:
+        return JSONResponse(
+            status_code=error["http_status"],
+            content=template_engine.render_error(
+                provider.get_error_template(error["error_type"]),
+                error,
+            ),
+        )
+
+    return None
 
 
 @app.get("/health")
@@ -81,7 +146,7 @@ async def health_check():
         "status": "healthy",
         "version": "1.0.0",
         "provider": config.provider,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "statistics": stats,
     }
 
@@ -183,59 +248,14 @@ async def send_message(
     auth_header = request.headers.get("authorization")
     username, password = extract_basic_auth(auth_header)
 
-    # Validate authentication
-    is_valid, error = provider.validate_auth(username, password)
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
-
     # Parse form data (Twilio sends form-encoded data)
     form_data = await request.form()
     request_data = dict(form_data)
 
-    # Validate required parameters
-    required_params = ["From", "To", "Body"]
-    is_valid, error = provider.validate_parameters(request_data, required_params)
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
-
-    # Validate phone number formats
-    for field in ["From", "To"]:
-        is_valid, error = provider.validate_phone_number(request_data[field], field)
-        if not is_valid:
-            error_response = template_engine.render_error(
-                provider.get_error_template(error["error_type"]),
-                error,
-            )
-            return JSONResponse(
-                status_code=error["http_status"],
-                content=error_response,
-            )
-
-    # Validate From number
-    is_valid, error = provider.validate_from_number(request_data["From"])
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
+    # Validate request (auth, params, phone numbers)
+    error_response = validate_request(username, password, request_data, ["From", "To", "Body"])
+    if error_response:
+        return error_response
 
     # Determine if message should succeed
     will_succeed = provider.should_succeed(request_data["To"])
@@ -305,59 +325,14 @@ async def make_call(
     auth_header = request.headers.get("authorization")
     username, password = extract_basic_auth(auth_header)
 
-    # Validate authentication
-    is_valid, error = provider.validate_auth(username, password)
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
-
     # Parse form data
     form_data = await request.form()
     request_data = dict(form_data)
 
-    # Validate required parameters
-    required_params = ["From", "To", "Url"]
-    is_valid, error = provider.validate_parameters(request_data, required_params)
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
-
-    # Validate phone number formats
-    for field in ["From", "To"]:
-        is_valid, error = provider.validate_phone_number(request_data[field], field)
-        if not is_valid:
-            error_response = template_engine.render_error(
-                provider.get_error_template(error["error_type"]),
-                error,
-            )
-            return JSONResponse(
-                status_code=error["http_status"],
-                content=error_response,
-            )
-
-    # Validate From number
-    is_valid, error = provider.validate_from_number(request_data["From"])
-    if not is_valid:
-        error_response = template_engine.render_error(
-            provider.get_error_template(error["error_type"]),
-            error,
-        )
-        return JSONResponse(
-            status_code=error["http_status"],
-            content=error_response,
-        )
+    # Validate request (auth, params, phone numbers)
+    error_response = validate_request(username, password, request_data, ["From", "To", "Url"])
+    if error_response:
+        return error_response
 
     # Determine if call should succeed
     will_succeed = provider.should_succeed(request_data["To"])

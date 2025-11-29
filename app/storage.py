@@ -1,8 +1,8 @@
 """Database storage layer for SMS Mock Server."""
 import sqlite3
-from datetime import datetime
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, Generator, List, Optional
 
 
 class Storage:
@@ -18,82 +18,89 @@ class Storage:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_database()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get database connection with row factory."""
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get database connection with automatic cleanup.
+
+        Yields:
+            SQLite connection with row factory configured
+        """
         conn = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_database(self) -> None:
         """Initialize database schema."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Enable WAL mode for better concurrent access
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
+            # Enable WAL mode for better concurrent access
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
 
-        # Messages table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_sid TEXT UNIQUE NOT NULL,
-                provider TEXT NOT NULL,
-                from_number TEXT NOT NULL,
-                to_number TEXT NOT NULL,
-                body TEXT,
-                status TEXT NOT NULL,
-                callback_url TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Messages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_sid TEXT UNIQUE NOT NULL,
+                    provider TEXT NOT NULL,
+                    from_number TEXT NOT NULL,
+                    to_number TEXT NOT NULL,
+                    body TEXT,
+                    status TEXT NOT NULL,
+                    callback_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        # Calls table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS calls (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                call_sid TEXT UNIQUE NOT NULL,
-                provider TEXT NOT NULL,
-                from_number TEXT NOT NULL,
-                to_number TEXT NOT NULL,
-                status TEXT NOT NULL,
-                callback_url TEXT,
-                twiml_url TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Calls table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS calls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    call_sid TEXT UNIQUE NOT NULL,
+                    provider TEXT NOT NULL,
+                    from_number TEXT NOT NULL,
+                    to_number TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    callback_url TEXT,
+                    twiml_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        # Delivery events table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS delivery_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_sid TEXT,
-                call_sid TEXT,
-                event_type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                callback_sent BOOLEAN DEFAULT FALSE,
-                callback_response TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Delivery events table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS delivery_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_sid TEXT,
+                    call_sid TEXT,
+                    event_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    callback_sent BOOLEAN DEFAULT FALSE,
+                    callback_response TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        # Callback logs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS callback_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                target_url TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                status_code INTEGER,
-                response_body TEXT,
-                attempt_number INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Callback logs table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS callback_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target_url TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status_code INTEGER,
+                    response_body TEXT,
+                    attempt_number INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     # Message operations
     def create_message(
@@ -120,21 +127,18 @@ class Storage:
         Returns:
             Message ID
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO messages (message_sid, provider, from_number, to_number, body, status, callback_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (message_sid, provider, from_number, to_number, body, status, callback_url),
-        )
-
-        message_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return message_id
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO messages (message_sid, provider, from_number, to_number, body, status, callback_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (message_sid, provider, from_number, to_number, body, status, callback_url),
+            )
+            message_id = cursor.lastrowid
+            conn.commit()
+            return message_id
 
     def get_message(self, message_sid: str) -> Optional[Dict[str, Any]]:
         """Get message by SID.
@@ -145,14 +149,11 @@ class Storage:
         Returns:
             Message dict or None if not found
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM messages WHERE message_sid = ?", (message_sid,))
-        row = cursor.fetchone()
-        conn.close()
-
-        return dict(row) if row else None
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM messages WHERE message_sid = ?", (message_sid,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def update_message_status(self, message_sid: str, status: str) -> None:
         """Update message status.
@@ -161,20 +162,17 @@ class Storage:
             message_sid: Message SID
             status: New status
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE messages
-            SET status = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE message_sid = ?
-            """,
-            (status, message_sid),
-        )
-
-        conn.commit()
-        conn.close()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE messages
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE message_sid = ?
+                """,
+                (status, message_sid),
+            )
+            conn.commit()
 
     def get_all_messages(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         """Get all messages with pagination.
@@ -186,17 +184,14 @@ class Storage:
         Returns:
             List of message dicts
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT * FROM messages ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM messages ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
 
     # Call operations
     def create_call(
@@ -223,21 +218,18 @@ class Storage:
         Returns:
             Call ID
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO calls (call_sid, provider, from_number, to_number, status, callback_url, twiml_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (call_sid, provider, from_number, to_number, status, callback_url, twiml_url),
-        )
-
-        call_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return call_id
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO calls (call_sid, provider, from_number, to_number, status, callback_url, twiml_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (call_sid, provider, from_number, to_number, status, callback_url, twiml_url),
+            )
+            call_id = cursor.lastrowid
+            conn.commit()
+            return call_id
 
     def get_call(self, call_sid: str) -> Optional[Dict[str, Any]]:
         """Get call by SID.
@@ -248,14 +240,11 @@ class Storage:
         Returns:
             Call dict or None if not found
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM calls WHERE call_sid = ?", (call_sid,))
-        row = cursor.fetchone()
-        conn.close()
-
-        return dict(row) if row else None
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM calls WHERE call_sid = ?", (call_sid,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def update_call_status(self, call_sid: str, status: str) -> None:
         """Update call status.
@@ -264,20 +253,17 @@ class Storage:
             call_sid: Call SID
             status: New status
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE calls
-            SET status = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE call_sid = ?
-            """,
-            (status, call_sid),
-        )
-
-        conn.commit()
-        conn.close()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE calls
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE call_sid = ?
+                """,
+                (status, call_sid),
+            )
+            conn.commit()
 
     def get_all_calls(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         """Get all calls with pagination.
@@ -289,17 +275,14 @@ class Storage:
         Returns:
             List of call dicts
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT * FROM calls ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM calls ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
 
     # Delivery event operations
     def create_delivery_event(
@@ -320,21 +303,18 @@ class Storage:
         Returns:
             Event ID
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO delivery_events (message_sid, call_sid, event_type, status)
-            VALUES (?, ?, ?, ?)
-            """,
-            (message_sid, call_sid, event_type, status),
-        )
-
-        event_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return event_id
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO delivery_events (message_sid, call_sid, event_type, status)
+                VALUES (?, ?, ?, ?)
+                """,
+                (message_sid, call_sid, event_type, status),
+            )
+            event_id = cursor.lastrowid
+            conn.commit()
+            return event_id
 
     def update_delivery_event_callback(
         self, event_id: int, callback_sent: bool, callback_response: Optional[str] = None
@@ -346,20 +326,17 @@ class Storage:
             callback_sent: Whether callback was sent
             callback_response: Optional callback response
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE delivery_events
-            SET callback_sent = ?, callback_response = ?
-            WHERE id = ?
-            """,
-            (callback_sent, callback_response, event_id),
-        )
-
-        conn.commit()
-        conn.close()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE delivery_events
+                SET callback_sent = ?, callback_response = ?
+                WHERE id = ?
+                """,
+                (callback_sent, callback_response, event_id),
+            )
+            conn.commit()
 
     # Callback log operations
     def create_callback_log(
@@ -382,21 +359,18 @@ class Storage:
         Returns:
             Log ID
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO callback_logs (target_url, payload, status_code, response_body, attempt_number)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (target_url, payload, status_code, response_body, attempt_number),
-        )
-
-        log_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return log_id
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO callback_logs (target_url, payload, status_code, response_body, attempt_number)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (target_url, payload, status_code, response_body, attempt_number),
+            )
+            log_id = cursor.lastrowid
+            conn.commit()
+            return log_id
 
     def get_all_callback_logs(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         """Get all callback logs with pagination.
@@ -408,17 +382,14 @@ class Storage:
         Returns:
             List of callback log dicts
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT * FROM callback_logs ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM callback_logs ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
 
     def get_callback(self, callback_id: int) -> Optional[Dict[str, Any]]:
         """Get a single callback log by ID.
@@ -429,17 +400,14 @@ class Storage:
         Returns:
             Callback log dict or None if not found
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT * FROM callback_logs WHERE id = ?",
-            (callback_id,),
-        )
-        row = cursor.fetchone()
-        conn.close()
-
-        return dict(row) if row else None
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM callback_logs WHERE id = ?",
+                (callback_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     # Statistics
     def get_statistics(self) -> Dict[str, int]:
@@ -448,25 +416,23 @@ class Storage:
         Returns:
             Dict with counts of messages, calls, and callbacks
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(*) as count FROM messages")
-        message_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM messages")
+            message_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM calls")
-        call_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM calls")
+            call_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
-        callback_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
+            callback_count = cursor.fetchone()["count"]
 
-        conn.close()
-
-        return {
-            "messages": message_count,
-            "calls": call_count,
-            "callbacks": callback_count,
-        }
+            return {
+                "messages": message_count,
+                "calls": call_count,
+                "callbacks": callback_count,
+            }
 
     # Clear/Reset operations
     def clear_messages(self) -> int:
@@ -475,22 +441,21 @@ class Storage:
         Returns:
             Number of messages deleted
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Get count before deletion
-        cursor.execute("SELECT COUNT(*) as count FROM messages")
-        count = cursor.fetchone()["count"]
+            # Get count before deletion
+            cursor.execute("SELECT COUNT(*) as count FROM messages")
+            count = cursor.fetchone()["count"]
 
-        # Delete delivery events for messages
-        cursor.execute("DELETE FROM delivery_events WHERE message_sid IS NOT NULL")
+            # Delete delivery events for messages
+            cursor.execute("DELETE FROM delivery_events WHERE message_sid IS NOT NULL")
 
-        # Delete messages
-        cursor.execute("DELETE FROM messages")
+            # Delete messages
+            cursor.execute("DELETE FROM messages")
 
-        conn.commit()
-        conn.close()
-        return count
+            conn.commit()
+            return count
 
     def clear_calls(self) -> int:
         """Clear all calls and related delivery events.
@@ -498,22 +463,21 @@ class Storage:
         Returns:
             Number of calls deleted
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Get count before deletion
-        cursor.execute("SELECT COUNT(*) as count FROM calls")
-        count = cursor.fetchone()["count"]
+            # Get count before deletion
+            cursor.execute("SELECT COUNT(*) as count FROM calls")
+            count = cursor.fetchone()["count"]
 
-        # Delete delivery events for calls
-        cursor.execute("DELETE FROM delivery_events WHERE call_sid IS NOT NULL")
+            # Delete delivery events for calls
+            cursor.execute("DELETE FROM delivery_events WHERE call_sid IS NOT NULL")
 
-        # Delete calls
-        cursor.execute("DELETE FROM calls")
+            # Delete calls
+            cursor.execute("DELETE FROM calls")
 
-        conn.commit()
-        conn.close()
-        return count
+            conn.commit()
+            return count
 
     def clear_callbacks(self) -> int:
         """Clear all callback logs.
@@ -521,19 +485,18 @@ class Storage:
         Returns:
             Number of callback logs deleted
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Get count before deletion
-        cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
-        count = cursor.fetchone()["count"]
+            # Get count before deletion
+            cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
+            count = cursor.fetchone()["count"]
 
-        # Delete callback logs
-        cursor.execute("DELETE FROM callback_logs")
+            # Delete callback logs
+            cursor.execute("DELETE FROM callback_logs")
 
-        conn.commit()
-        conn.close()
-        return count
+            conn.commit()
+            return count
 
     def clear_all(self) -> Dict[str, int]:
         """Clear all data from all tables.
@@ -541,30 +504,29 @@ class Storage:
         Returns:
             Dict with counts of deleted records
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Get counts before deletion
-        cursor.execute("SELECT COUNT(*) as count FROM messages")
-        message_count = cursor.fetchone()["count"]
+            # Get counts before deletion
+            cursor.execute("SELECT COUNT(*) as count FROM messages")
+            message_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM calls")
-        call_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM calls")
+            call_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
-        callback_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
+            callback_count = cursor.fetchone()["count"]
 
-        # Delete all data
-        cursor.execute("DELETE FROM delivery_events")
-        cursor.execute("DELETE FROM callback_logs")
-        cursor.execute("DELETE FROM messages")
-        cursor.execute("DELETE FROM calls")
+            # Delete all data
+            cursor.execute("DELETE FROM delivery_events")
+            cursor.execute("DELETE FROM callback_logs")
+            cursor.execute("DELETE FROM messages")
+            cursor.execute("DELETE FROM calls")
 
-        conn.commit()
-        conn.close()
+            conn.commit()
 
-        return {
-            "messages": message_count,
-            "calls": call_count,
-            "callbacks": callback_count,
-        }
+            return {
+                "messages": message_count,
+                "calls": call_count,
+                "callbacks": callback_count,
+            }

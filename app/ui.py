@@ -2,6 +2,7 @@
 import json
 import logging
 from datetime import datetime
+from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
@@ -18,6 +19,44 @@ router = APIRouter()
 
 # Setup Jinja2 for HTML templates
 templates = Jinja2Templates(directory="templates/ui")
+
+# Pagination constant
+ITEMS_PER_PAGE = 50
+
+
+def parse_callback_payload(callback: Dict[str, Any]) -> None:
+    """Parse callback JSON payload and extract status/SID fields.
+
+    Modifies the callback dict in place, adding:
+    - message_status: MessageStatus from payload
+    - call_status: CallStatus from payload
+    - message_sid: MessageSid from payload
+    - call_sid: CallSid from payload
+
+    Args:
+        callback: Callback dict to modify
+    """
+    try:
+        payload = json.loads(callback.get("payload", "{}"))
+        callback["message_status"] = payload.get("MessageStatus")
+        callback["call_status"] = payload.get("CallStatus")
+        callback["message_sid"] = payload.get("MessageSid")
+        callback["call_sid"] = payload.get("CallSid")
+    except (json.JSONDecodeError, TypeError):
+        callback["message_status"] = None
+        callback["call_status"] = None
+        callback["message_sid"] = None
+        callback["call_sid"] = None
+
+
+def parse_callback_payloads(callbacks: List[Dict[str, Any]]) -> None:
+    """Parse JSON payloads for a list of callbacks.
+
+    Args:
+        callbacks: List of callback dicts to modify
+    """
+    for callback in callbacks:
+        parse_callback_payload(callback)
 
 
 def setup_ui_routes(app, storage: Storage, config: Config):
@@ -110,12 +149,11 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         logger.info(f"Messages page accessed from {client_host} - UA: {user_agent}")
 
         # Pagination
-        per_page = 50
-        offset = (page - 1) * per_page
-        messages = storage.get_all_messages(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        messages = storage.get_all_messages(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_messages = stats.get("messages", 0)
-        total_pages = (total_messages + per_page - 1) // per_page
+        total_pages = (total_messages + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
         return templates.TemplateResponse(
             "messages.html",
@@ -145,12 +183,11 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         logger.info(f"Calls page accessed from {client_host} - UA: {user_agent}")
 
         # Pagination
-        per_page = 50
-        offset = (page - 1) * per_page
-        calls = storage.get_all_calls(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        calls = storage.get_all_calls(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_calls = stats.get("calls", 0)
-        total_pages = (total_calls + per_page - 1) // per_page
+        total_pages = (total_calls + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
         return templates.TemplateResponse(
             "calls.html",
@@ -180,26 +217,14 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         logger.info(f"Callbacks page accessed from {client_host} - UA: {user_agent}")
 
         # Pagination
-        per_page = 50
-        offset = (page - 1) * per_page
-        callbacks = storage.get_all_callback_logs(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        callbacks = storage.get_all_callback_logs(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_callbacks = stats.get("callbacks", 0)
-        total_pages = (total_callbacks + per_page - 1) // per_page
+        total_pages = (total_callbacks + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
-        # Parse JSON payload to extract status and SID for each callback
-        for callback in callbacks:
-            try:
-                payload = json.loads(callback["payload"])
-                callback["message_status"] = payload.get("MessageStatus")
-                callback["call_status"] = payload.get("CallStatus")
-                callback["message_sid"] = payload.get("MessageSid")
-                callback["call_sid"] = payload.get("CallSid")
-            except (json.JSONDecodeError, KeyError):
-                callback["message_status"] = None
-                callback["call_status"] = None
-                callback["message_sid"] = None
-                callback["call_sid"] = None
+        # Parse JSON payloads
+        parse_callback_payloads(callbacks)
 
         return templates.TemplateResponse(
             "callbacks.html",
@@ -287,12 +312,11 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        per_page = 50
-        offset = (page - 1) * per_page
-        messages = storage.get_all_messages(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        messages = storage.get_all_messages(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_messages = stats.get("messages", 0)
-        total_pages = (total_messages + per_page - 1) // per_page
+        total_pages = (total_messages + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
         return templates.TemplateResponse(
             "fragments/messages_table.html",
@@ -315,12 +339,11 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        per_page = 50
-        offset = (page - 1) * per_page
-        calls = storage.get_all_calls(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        calls = storage.get_all_calls(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_calls = stats.get("calls", 0)
-        total_pages = (total_calls + per_page - 1) // per_page
+        total_pages = (total_calls + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
         return templates.TemplateResponse(
             "fragments/calls_table.html",
@@ -343,26 +366,14 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        per_page = 50
-        offset = (page - 1) * per_page
-        callbacks = storage.get_all_callback_logs(limit=per_page, offset=offset)
+        offset = (page - 1) * ITEMS_PER_PAGE
+        callbacks = storage.get_all_callback_logs(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_callbacks = stats.get("callbacks", 0)
-        total_pages = (total_callbacks + per_page - 1) // per_page
+        total_pages = (total_callbacks + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
-        # Parse JSON payload to extract status and SID for each callback
-        for callback in callbacks:
-            try:
-                payload = json.loads(callback["payload"])
-                callback["message_status"] = payload.get("MessageStatus")
-                callback["call_status"] = payload.get("CallStatus")
-                callback["message_sid"] = payload.get("MessageSid")
-                callback["call_sid"] = payload.get("CallSid")
-            except (json.JSONDecodeError, KeyError):
-                callback["message_status"] = None
-                callback["call_status"] = None
-                callback["message_sid"] = None
-                callback["call_sid"] = None
+        # Parse JSON payloads
+        parse_callback_payloads(callbacks)
 
         return templates.TemplateResponse(
             "fragments/callbacks_table.html",
@@ -455,18 +466,8 @@ def setup_ui_routes(app, storage: Storage, config: Config):
                 status_code=404,
             )
 
-        # Parse JSON payload to extract status and SID
-        try:
-            payload = json.loads(callback["payload"])
-            callback["message_status"] = payload.get("MessageStatus")
-            callback["call_status"] = payload.get("CallStatus")
-            callback["message_sid"] = payload.get("MessageSid")
-            callback["call_sid"] = payload.get("CallSid")
-        except (json.JSONDecodeError, KeyError):
-            callback["message_status"] = None
-            callback["call_status"] = None
-            callback["message_sid"] = None
-            callback["call_sid"] = None
+        # Parse JSON payload
+        parse_callback_payload(callback)
 
         logger.info(f"Returning callback details for {callback_id}")
         return templates.TemplateResponse(
