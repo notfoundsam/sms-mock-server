@@ -19,18 +19,37 @@ exclude = [
 [lint]
 # Enable rules
 select = [
-    "E",      # pycodestyle errors
+    "E",      # pycodestyle errors (including blank line rules E301-E306)
     "F",      # pyflakes
     "I",      # isort (import sorting)
     "W",      # pycodestyle warnings
     "UP",     # pyupgrade (modern Python syntax)
     "B",      # flake8-bugbear (common bugs)
     "SIM",    # flake8-simplify
+    "C4",     # flake8-comprehensions (better comprehensions)
+    "RET",    # flake8-return (return statement issues)
+    "RUF",    # Ruff-specific rules
+    "PTH",    # flake8-use-pathlib (prefer pathlib over os.path)
+    "PERF",   # Perflint (performance anti-patterns)
+    "FURB",   # refurb (modern Python idioms)
+    "A",      # flake8-builtins (avoid shadowing builtins)
+    "COM",    # flake8-commas (trailing commas)
+    "Q",      # flake8-quotes (consistent quotes)
+    "T20",    # flake8-print (no print statements in production)
+    "ERA",    # eradicate (commented-out code)
+    "PL",     # Pylint rules
+    "N",      # pep8-naming conventions
+    "S",      # flake8-bandit (security issues)
+    "TRY",    # tryceratops (exception handling)
 ]
 
 # Ignore specific rules
 ignore = [
-    "E501",   # line too long (handled by formatter if needed)
+    "E501",     # line too long (handled by formatter if needed)
+    "S101",     # assert used (needed for tests)
+    "PLR0913",  # too many arguments (some functions need them)
+    "TRY003",   # long exception messages (acceptable)
+    "COM812",   # missing trailing comma (conflicts with formatter)
 ]
 
 # Allow autofix for all enabled rules
@@ -39,3 +58,26 @@ fixable = ["ALL"]
 [lint.isort]
 # Group imports: standard library, third-party, local
 known-first-party = ["app"]
+
+[lint.per-file-ignores]
+# Allow print in scripts and tests
+"scripts/*.py" = ["T20"]
+"tests/*.py" = ["T20", "S", "PLR2004"]
+
+[lint.flake8-quotes]
+# Enforce double quotes
+inline-quotes = "double"
+
+[lint.pylint]
+# Max arguments for functions
+max-args = 8
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+# Indent with spaces
+indent-style = "space"
+# Unix line endings
+line-ending = "lf"
+# Format docstrings
+docstring-code-format = true
