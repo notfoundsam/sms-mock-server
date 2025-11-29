@@ -5,8 +5,8 @@ ACCOUNT_SID="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 AUTH_TOKEN="your_auth_token_here"
 FROM_NUMBER="+15550000001"
 TO_NUMBER="+15551234567"
-CALLBACK_URL="http://localhost:9090/callback-test"
-SERVER_URL="http://localhost:9090"
+CALLBACK_URL="http://localhost:8080/callback-test"
+SERVER_URL="http://localhost:8080"
 DELAY_SECONDS=1
 
 # Colors for output
@@ -43,14 +43,14 @@ while true; do
 
     echo -e "${BLUE}[${count}]${NC} Sending message: ${body}"
 
-    # Send message with curl
+    # Send message with curl (use --data-urlencode to properly encode + as %2B)
     response=$(curl -s -w "\n%{http_code}" -X POST \
         "${SERVER_URL}/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json" \
         -u "${ACCOUNT_SID}:${AUTH_TOKEN}" \
-        -d "From=${FROM_NUMBER}" \
-        -d "To=${TO_NUMBER}" \
-        -d "Body=${body}" \
-        -d "StatusCallback=${CALLBACK_URL}")
+        --data-urlencode "From=${FROM_NUMBER}" \
+        --data-urlencode "To=${TO_NUMBER}" \
+        --data-urlencode "Body=${body}" \
+        --data-urlencode "StatusCallback=${CALLBACK_URL}")
 
     # Extract HTTP status code (last line)
     http_code=$(echo "$response" | tail -n 1)
