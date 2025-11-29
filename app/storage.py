@@ -1,8 +1,9 @@
 """Database storage layer for SMS Mock Server."""
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any
 
 
 class Storage:
@@ -19,7 +20,7 @@ class Storage:
         self._init_database()
 
     @contextmanager
-    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+    def _get_connection(self) -> Generator[sqlite3.Connection]:
         """Get database connection with automatic cleanup.
 
         Yields:
@@ -111,7 +112,7 @@ class Storage:
         to_number: str,
         body: str,
         status: str,
-        callback_url: Optional[str] = None,
+        callback_url: str | None = None,
     ) -> int:
         """Create a new message record.
 
@@ -140,7 +141,7 @@ class Storage:
             conn.commit()
             return message_id
 
-    def get_message(self, message_sid: str) -> Optional[Dict[str, Any]]:
+    def get_message(self, message_sid: str) -> dict[str, Any] | None:
         """Get message by SID.
 
         Args:
@@ -174,7 +175,7 @@ class Storage:
             )
             conn.commit()
 
-    def get_all_messages(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_all_messages(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         """Get all messages with pagination.
 
         Args:
@@ -201,8 +202,8 @@ class Storage:
         from_number: str,
         to_number: str,
         status: str,
-        callback_url: Optional[str] = None,
-        twiml_url: Optional[str] = None,
+        callback_url: str | None = None,
+        twiml_url: str | None = None,
     ) -> int:
         """Create a new call record.
 
@@ -231,7 +232,7 @@ class Storage:
             conn.commit()
             return call_id
 
-    def get_call(self, call_sid: str) -> Optional[Dict[str, Any]]:
+    def get_call(self, call_sid: str) -> dict[str, Any] | None:
         """Get call by SID.
 
         Args:
@@ -265,7 +266,7 @@ class Storage:
             )
             conn.commit()
 
-    def get_all_calls(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_all_calls(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         """Get all calls with pagination.
 
         Args:
@@ -287,8 +288,8 @@ class Storage:
     # Delivery event operations
     def create_delivery_event(
         self,
-        message_sid: Optional[str],
-        call_sid: Optional[str],
+        message_sid: str | None,
+        call_sid: str | None,
         event_type: str,
         status: str,
     ) -> int:
@@ -317,7 +318,7 @@ class Storage:
             return event_id
 
     def update_delivery_event_callback(
-        self, event_id: int, callback_sent: bool, callback_response: Optional[str] = None
+        self, event_id: int, callback_sent: bool, callback_response: str | None = None
     ) -> None:
         """Update delivery event callback status.
 
@@ -343,8 +344,8 @@ class Storage:
         self,
         target_url: str,
         payload: str,
-        status_code: Optional[int] = None,
-        response_body: Optional[str] = None,
+        status_code: int | None = None,
+        response_body: str | None = None,
         attempt_number: int = 1,
     ) -> int:
         """Create a callback log entry.
@@ -372,7 +373,7 @@ class Storage:
             conn.commit()
             return log_id
 
-    def get_all_callback_logs(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_all_callback_logs(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         """Get all callback logs with pagination.
 
         Args:
@@ -391,7 +392,7 @@ class Storage:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def get_callback(self, callback_id: int) -> Optional[Dict[str, Any]]:
+    def get_callback(self, callback_id: int) -> dict[str, Any] | None:
         """Get a single callback log by ID.
 
         Args:
@@ -410,7 +411,7 @@ class Storage:
             return dict(row) if row else None
 
     # Statistics
-    def get_statistics(self) -> Dict[str, int]:
+    def get_statistics(self) -> dict[str, int]:
         """Get database statistics.
 
         Returns:
@@ -498,7 +499,7 @@ class Storage:
             conn.commit()
             return count
 
-    def clear_all(self) -> Dict[str, int]:
+    def clear_all(self) -> dict[str, int]:
         """Clear all data from all tables.
 
         Returns:

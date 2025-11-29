@@ -1,7 +1,7 @@
 """Configuration loader and validator for SMS Mock Server."""
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -14,7 +14,7 @@ class ConfigurationError(Exception):
 class ServerConfig:
     """Server configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.host: str = data.get("host", "0.0.0.0")
         self.port: int = data.get("port", 8080)
         self.timezone: str = data.get("timezone", "UTC")
@@ -23,7 +23,7 @@ class ServerConfig:
 class ValidationConfig:
     """Validation settings configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.require_auth: bool = data.get("require_auth", True)
         self.validate_phone_format: bool = data.get("validate_phone_format", True)
         self.check_from_numbers: bool = data.get("check_from_numbers", True)
@@ -33,7 +33,7 @@ class ValidationConfig:
 class CallbackConfig:
     """Callback settings configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.enabled: bool = data.get("enabled", True)
         self.delay_seconds: int = data.get("delay_seconds", 2)
         self.retry_attempts: int = data.get("retry_attempts", 3)
@@ -43,7 +43,7 @@ class CallbackConfig:
 class TwilioConfig:
     """Twilio provider configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.account_sid: str = data.get("account_sid", "")
         self.auth_token: str = data.get("auth_token", "")
 
@@ -59,9 +59,9 @@ class TwilioConfig:
             )
 
         # Number lists
-        self.registered_numbers: List[str] = data.get("registered_numbers", [])
-        self.allowed_from_numbers: List[str] = data.get("allowed_from_numbers", [])
-        self.failure_numbers: List[str] = data.get("failure_numbers", [])
+        self.registered_numbers: list[str] = data.get("registered_numbers", [])
+        self.allowed_from_numbers: list[str] = data.get("allowed_from_numbers", [])
+        self.failure_numbers: list[str] = data.get("failure_numbers", [])
 
         # Callbacks
         callback_data = data.get("callbacks", {})
@@ -83,21 +83,21 @@ class TwilioConfig:
 class DatabaseConfig:
     """Database configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.path: str = data.get("path", "./data/mock_server.db")
 
 
 class TemplatesConfig:
     """Templates configuration."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.path: str = data.get("path", "./templates/responses")
 
 
 class Config:
     """Main configuration class."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """Load configuration from YAML file.
 
         Args:
@@ -154,7 +154,7 @@ class Config:
             )
 
 
-def load_config(config_path: Optional[str] = None) -> Config:
+def load_config(config_path: str | None = None) -> Config:
     """Load and return configuration.
 
     Args:

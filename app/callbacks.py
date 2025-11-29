@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 import httpx
 
@@ -31,7 +31,7 @@ class CallbackHandler:
     async def send_callback(
         self,
         url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         attempt: int = 1,
     ) -> tuple[bool, int, str]:
         """Send callback to URL with retry logic.
@@ -91,7 +91,7 @@ class CallbackHandler:
     async def send_callback_with_retry(
         self,
         url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> bool:
         """Send callback with retry logic.
 
@@ -128,7 +128,7 @@ class CallbackHandler:
         message_sid: str,
         from_number: str,
         to_number: str,
-        callback_url: Optional[str],
+        callback_url: str | None,
         will_succeed: bool,
     ) -> None:
         """Process message status updates and callbacks.
@@ -206,7 +206,7 @@ class CallbackHandler:
         call_sid: str,
         from_number: str,
         to_number: str,
-        callback_url: Optional[str],
+        callback_url: str | None,
         will_succeed: bool,
     ) -> None:
         """Process call status updates and callbacks.

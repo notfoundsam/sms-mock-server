@@ -1,13 +1,13 @@
 """Base provider interface for SMS Mock Server."""
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Tuple, Optional
+from typing import Any
 
 
 class BaseProvider(ABC):
     """Abstract base class for provider implementations."""
 
     @abstractmethod
-    def send_sms(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    def send_sms(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process SMS sending request.
 
         Args:
@@ -19,7 +19,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    def make_call(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    def make_call(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process call making request.
 
         Args:
@@ -32,8 +32,8 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def validate_auth(
-        self, username: Optional[str], password: Optional[str]
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        self, username: str | None, password: str | None
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate authentication credentials.
 
         Args:
@@ -49,8 +49,8 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def validate_parameters(
-        self, request_data: Dict[str, Any], required_params: list
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        self, request_data: dict[str, Any], required_params: list
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate required parameters are present.
 
         Args:
@@ -65,7 +65,7 @@ class BaseProvider(ABC):
     @abstractmethod
     def validate_phone_number(
         self, number: str, field_name: str
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate phone number format (E.164).
 
         Args:
@@ -80,7 +80,7 @@ class BaseProvider(ABC):
     @abstractmethod
     def validate_from_number(
         self, number: str
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate From number is in allowed list.
 
         Args:

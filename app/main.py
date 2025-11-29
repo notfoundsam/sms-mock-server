@@ -2,7 +2,6 @@
 import base64
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, Response
@@ -45,7 +44,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 setup_ui_routes(app, storage, config)
 
 
-def extract_basic_auth(authorization: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+def extract_basic_auth(authorization: str | None) -> tuple[str | None, str | None]:
     """Extract username and password from Basic Auth header.
 
     Args:
@@ -69,11 +68,11 @@ def extract_basic_auth(authorization: Optional[str]) -> Tuple[Optional[str], Opt
 
 
 def validate_request(
-    username: Optional[str],
-    password: Optional[str],
-    request_data: Dict[str, str],
-    required_params: List[str],
-) -> Optional[JSONResponse]:
+    username: str | None,
+    password: str | None,
+    request_data: dict[str, str],
+    required_params: list[str],
+) -> JSONResponse | None:
     """Validate authentication, parameters, and phone numbers.
 
     Args:

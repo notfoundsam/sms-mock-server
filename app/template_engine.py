@@ -4,7 +4,7 @@ import secrets
 import string
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -108,8 +108,8 @@ class TemplateEngine:
     def render_response(
         self,
         template_name: str,
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
         """Render response template with context.
 
         Args:
@@ -135,8 +135,8 @@ class TemplateEngine:
     def render_error(
         self,
         template_name: str,
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
         """Render error template with context.
 
         Args:
@@ -158,9 +158,9 @@ class TemplateEngine:
         self,
         message_sid: str,
         account_sid: str,
-        request_data: Dict[str, Any],
+        request_data: dict[str, Any],
         status: str = "queued",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create context for message response template.
 
         Args:
@@ -190,9 +190,9 @@ class TemplateEngine:
         self,
         call_sid: str,
         account_sid: str,
-        request_data: Dict[str, Any],
+        request_data: dict[str, Any],
         status: str = "queued",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create context for call response template.
 
         Args:
@@ -220,7 +220,7 @@ class TemplateEngine:
         from_number: str,
         to_number: str,
         status: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create context for delivery status callback.
 
         Args:

@@ -1,5 +1,5 @@
 """Twilio provider implementation for SMS Mock Server."""
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import phonenumbers
 
@@ -18,19 +18,19 @@ class TwilioProvider(BaseProvider):
         """
         self.config = config
 
-    def send_sms(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    def send_sms(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process SMS sending request (implementation in main app)."""
         # This is handled by the API layer
         pass
 
-    def make_call(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    def make_call(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Process call making request (implementation in main app)."""
         # This is handled by the API layer
         pass
 
     def validate_auth(
-        self, username: Optional[str], password: Optional[str]
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        self, username: str | None, password: str | None
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate authentication credentials.
 
         Args:
@@ -58,8 +58,8 @@ class TwilioProvider(BaseProvider):
         return True, None
 
     def validate_parameters(
-        self, request_data: Dict[str, Any], required_params: list
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        self, request_data: dict[str, Any], required_params: list
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate required parameters are present.
 
         Args:
@@ -84,7 +84,7 @@ class TwilioProvider(BaseProvider):
 
     def validate_phone_number(
         self, number: str, field_name: str
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate phone number format (E.164).
 
         Args:
@@ -118,7 +118,7 @@ class TwilioProvider(BaseProvider):
 
     def validate_from_number(
         self, number: str
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Validate From number is in allowed list.
 
         Args:

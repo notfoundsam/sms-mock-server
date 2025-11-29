@@ -2,7 +2,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
@@ -24,7 +24,7 @@ templates = Jinja2Templates(directory="templates/ui")
 ITEMS_PER_PAGE = 50
 
 
-def parse_callback_payload(callback: Dict[str, Any]) -> None:
+def parse_callback_payload(callback: dict[str, Any]) -> None:
     """Parse callback JSON payload and extract status/SID fields.
 
     Modifies the callback dict in place, adding:
@@ -49,7 +49,7 @@ def parse_callback_payload(callback: Dict[str, Any]) -> None:
         callback["call_sid"] = None
 
 
-def parse_callback_payloads(callbacks: List[Dict[str, Any]]) -> None:
+def parse_callback_payloads(callbacks: list[dict[str, Any]]) -> None:
     """Parse JSON payloads for a list of callbacks.
 
     Args:
