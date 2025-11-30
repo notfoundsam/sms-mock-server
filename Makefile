@@ -33,15 +33,15 @@ restart:
 
 ## test: Run tests inside container
 test:
-	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q -r requirements-dev.txt && pytest tests/ -v"
+	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q --root-user-action=ignore -r requirements-dev.txt && pytest tests/"
 
 ## lint: Run Ruff linter and format check
 lint:
-	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check app/ tests/ && ruff format --check app/ tests/"
+	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q --root-user-action=ignore ruff==0.8.6 && ruff check app/ tests/ && ruff format --check app/ tests/"
 
 ## fix: Auto-fix lint issues and format code
 fix:
-	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q ruff==0.8.6 && ruff check --fix app/ tests/ && ruff format app/ tests/"
+	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q --root-user-action=ignore ruff==0.8.6 && ruff check --fix app/ tests/ && ruff format app/ tests/"
 
 ## seed: Seed database with sample messages and calls
 seed:
