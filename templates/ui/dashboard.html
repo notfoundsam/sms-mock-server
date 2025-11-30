@@ -49,7 +49,7 @@
             <td class="phone">{{ message.to_number }}</td>
             <td>{{ message.body[:50] }}{% if message.body|length > 50 %}...{% endif %}</td>
             <td><span class="status {{ message.status }}">{{ message.status }}</span></td>
-            <td class="timestamp">{{ message.created_at }}</td>
+            <td class="timestamp">{{ message.created_at|tz }}</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -81,7 +81,7 @@
             <td class="phone">{{ call.from_number }}</td>
             <td class="phone">{{ call.to_number }}</td>
             <td><span class="status {{ call.status }}">{{ call.status }}</span></td>
-            <td class="timestamp">{{ call.created_at }}</td>
+            <td class="timestamp">{{ call.created_at|tz }}</td>
         </tr>
         {% endfor %}
     </tbody>
