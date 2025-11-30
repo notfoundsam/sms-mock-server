@@ -17,3 +17,7 @@ aiosqlite==0.21.0
 
 # Phone number validation
 phonenumbers==9.0.19
+
+# Asset minification
+rcssmin==1.1.2
+rjsmin==1.2.2

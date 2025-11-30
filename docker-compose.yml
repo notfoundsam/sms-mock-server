@@ -7,6 +7,8 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./templates:/app/templates
+      - ./static:/app/static
+      - ./scripts:/app/scripts
       - sms-mock-data:/app/data
       - ./tests:/app/tests
       - ./pytest.ini:/app/pytest.ini

@@ -1,7 +1,7 @@
 # SMS Mock Server - Makefile
 # Usage: make <target>
 
-.PHONY: install up stop restart test lint seed clean logs help
+.PHONY: install up stop restart test lint fix build-assets seed clean logs help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -42,6 +42,10 @@ lint:
 ## fix: Auto-fix lint issues and format code
 fix:
 	$(COMPOSE) exec $(SERVICE) sh -c "pip install -q --root-user-action=ignore ruff==0.8.6 && ruff check --fix app/ tests/ && ruff format app/ tests/"
+
+## build-assets: Minify CSS/JS and generate manifest with content hashes
+build-assets:
+	$(COMPOSE) exec $(SERVICE) python scripts/build_assets.py
 
 ## seed: Seed database with sample messages and calls
 seed:

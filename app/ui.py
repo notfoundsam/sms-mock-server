@@ -3,6 +3,7 @@ import json
 import logging
 import math
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,28 @@ router = APIRouter()
 
 # Setup Jinja2 for HTML templates
 templates = Jinja2Templates(directory="templates/ui")
+
+# Load asset manifest for cache-busted URLs
+MANIFEST_PATH = Path("static/manifest.json")
+_asset_manifest: dict[str, str] = {}
+
+if MANIFEST_PATH.exists():
+    _asset_manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    logger.info(f"Loaded asset manifest with {len(_asset_manifest)} entries")
+else:
+    logger.warning("Asset manifest not found, using original URLs")
+
+
+def asset_url(path: str) -> str:
+    """Get versioned URL for a static asset.
+
+    Args:
+        path: Original asset path (e.g., '/static/css/style.css')
+
+    Returns:
+        Versioned URL from manifest, or original path if not found
+    """
+    return _asset_manifest.get(path, path)
 
 # Pagination constant
 ITEMS_PER_PAGE = 50
@@ -115,8 +138,9 @@ def setup_ui_routes(app, storage: Storage, config: Config):
 
     # Register the filter with Jinja2
     templates.env.filters["tz"] = format_datetime
-    # Also make timezone name available globally
+    # Make globals available to all templates
     templates.env.globals["timezone"] = tz_name
+    templates.env.globals["asset_url"] = asset_url
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):

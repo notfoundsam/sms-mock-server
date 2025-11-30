@@ -37,7 +37,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log incoming requests based on type."""
