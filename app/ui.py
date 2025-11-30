@@ -1,6 +1,7 @@
 """Web UI routes for SMS Mock Server."""
 import json
 import logging
+import math
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -22,6 +23,18 @@ templates = Jinja2Templates(directory="templates/ui")
 
 # Pagination constant
 ITEMS_PER_PAGE = 50
+
+
+def calculate_total_pages(total_items: int) -> int:
+    """Calculate total pages for pagination.
+
+    Args:
+        total_items: Total number of items
+
+    Returns:
+        Number of pages needed
+    """
+    return math.ceil(total_items / ITEMS_PER_PAGE)
 
 
 def parse_callback_payload(callback: dict[str, Any]) -> None:
@@ -115,9 +128,6 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML response
         """
-        client_host = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Dashboard accessed from {client_host} - UA: {user_agent}")
         stats = storage.get_statistics()
         recent_messages = storage.get_all_messages(limit=10)
         recent_calls = storage.get_all_calls(limit=10)
@@ -144,16 +154,12 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML response
         """
-        client_host = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Messages page accessed from {client_host} - UA: {user_agent}")
-
         # Pagination
         offset = (page - 1) * ITEMS_PER_PAGE
         messages = storage.get_all_messages(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_messages = stats.get("messages", 0)
-        total_pages = (total_messages + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_messages)
 
         return templates.TemplateResponse(
             "messages.html",
@@ -178,16 +184,12 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML response
         """
-        client_host = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Calls page accessed from {client_host} - UA: {user_agent}")
-
         # Pagination
         offset = (page - 1) * ITEMS_PER_PAGE
         calls = storage.get_all_calls(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_calls = stats.get("calls", 0)
-        total_pages = (total_calls + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_calls)
 
         return templates.TemplateResponse(
             "calls.html",
@@ -212,16 +214,12 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML response
         """
-        client_host = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Callbacks page accessed from {client_host} - UA: {user_agent}")
-
         # Pagination
         offset = (page - 1) * ITEMS_PER_PAGE
         callbacks = storage.get_all_callback_logs(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_callbacks = stats.get("callbacks", 0)
-        total_pages = (total_callbacks + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_callbacks)
 
         # Parse JSON payloads
         parse_callback_payloads(callbacks)
@@ -248,8 +246,6 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        client_host = request.client.host if request.client else "unknown"
-        logger.debug(f"Stats fragment requested from {client_host}")
         stats = storage.get_statistics()
         return templates.TemplateResponse(
             "fragments/stats.html",
@@ -269,8 +265,6 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        client_host = request.client.host if request.client else "unknown"
-        logger.debug(f"Recent messages fragment requested from {client_host}")
         recent_messages = storage.get_all_messages(limit=10)
         return templates.TemplateResponse(
             "fragments/recent_messages.html",
@@ -290,8 +284,6 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment
         """
-        client_host = request.client.host if request.client else "unknown"
-        logger.debug(f"Recent calls fragment requested from {client_host}")
         recent_calls = storage.get_all_calls(limit=10)
         return templates.TemplateResponse(
             "fragments/recent_calls.html",
@@ -316,7 +308,7 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         messages = storage.get_all_messages(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_messages = stats.get("messages", 0)
-        total_pages = (total_messages + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_messages)
 
         return templates.TemplateResponse(
             "fragments/messages_table.html",
@@ -343,7 +335,7 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         calls = storage.get_all_calls(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_calls = stats.get("calls", 0)
-        total_pages = (total_calls + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_calls)
 
         return templates.TemplateResponse(
             "fragments/calls_table.html",
@@ -370,7 +362,7 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         callbacks = storage.get_all_callback_logs(limit=ITEMS_PER_PAGE, offset=offset)
         stats = storage.get_statistics()
         total_callbacks = stats.get("callbacks", 0)
-        total_pages = (total_callbacks + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        total_pages = calculate_total_pages(total_callbacks)
 
         # Parse JSON payloads
         parse_callback_payloads(callbacks)
@@ -396,17 +388,13 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment with message details
         """
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Request for message details: {message_sid} - UA: {user_agent}")
         message = storage.get_message(message_sid)
         if not message:
-            logger.warning(f"Message not found: {message_sid}")
             return HTMLResponse(
                 content="<div class='modal-body'><p>Message not found</p></div>",
                 status_code=404,
             )
 
-        logger.info(f"Returning message details for {message_sid}")
         return templates.TemplateResponse(
             "fragments/message_detail.html",
             {
@@ -426,17 +414,13 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment with call details
         """
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Request for call details: {call_sid} - UA: {user_agent}")
         call = storage.get_call(call_sid)
         if not call:
-            logger.warning(f"Call not found: {call_sid}")
             return HTMLResponse(
                 content="<div class='modal-body'><p>Call not found</p></div>",
                 status_code=404,
             )
 
-        logger.info(f"Returning call details for {call_sid}")
         return templates.TemplateResponse(
             "fragments/call_detail.html",
             {
@@ -456,11 +440,8 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         Returns:
             HTML fragment with callback details
         """
-        user_agent = request.headers.get("user-agent", "unknown")
-        logger.info(f"Request for callback details: {callback_id} - UA: {user_agent}")
         callback = storage.get_callback(callback_id)
         if not callback:
-            logger.warning(f"Callback not found: {callback_id}")
             return HTMLResponse(
                 content="<div class='modal-body'><p>Callback not found</p></div>",
                 status_code=404,
@@ -469,7 +450,6 @@ def setup_ui_routes(app, storage: Storage, config: Config):
         # Parse JSON payload
         parse_callback_payload(callback)
 
-        logger.info(f"Returning callback details for {callback_id}")
         return templates.TemplateResponse(
             "fragments/callback_detail.html",
             {

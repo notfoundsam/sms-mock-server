@@ -37,6 +37,28 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log incoming requests based on type."""
+    path = request.url.path
+    method = request.method
+
+    # Skip static files
+    if path.startswith("/static/"):
+        return await call_next(request)
+
+    # Log API requests at INFO level
+    if path.startswith("/2010-04-01/"):
+        client_host = request.client.host if request.client else "unknown"
+        logger.info(f"API {method} {path} from {client_host}")
+    # Log UI requests at DEBUG level
+    elif not path.startswith("/health"):
+        logger.debug(f"UI {method} {path}")
+
+    return await call_next(request)
+
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

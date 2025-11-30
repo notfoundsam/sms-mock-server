@@ -505,29 +505,8 @@ class Storage:
         Returns:
             Dict with counts of deleted records
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Get counts before deletion
-            cursor.execute("SELECT COUNT(*) as count FROM messages")
-            message_count = cursor.fetchone()["count"]
-
-            cursor.execute("SELECT COUNT(*) as count FROM calls")
-            call_count = cursor.fetchone()["count"]
-
-            cursor.execute("SELECT COUNT(*) as count FROM callback_logs")
-            callback_count = cursor.fetchone()["count"]
-
-            # Delete all data
-            cursor.execute("DELETE FROM delivery_events")
-            cursor.execute("DELETE FROM callback_logs")
-            cursor.execute("DELETE FROM messages")
-            cursor.execute("DELETE FROM calls")
-
-            conn.commit()
-
-            return {
-                "messages": message_count,
-                "calls": call_count,
-                "callbacks": callback_count,
-            }
+        return {
+            "messages": self.clear_messages(),
+            "calls": self.clear_calls(),
+            "callbacks": self.clear_callbacks(),
+        }
