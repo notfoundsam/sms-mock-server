@@ -1,0 +1,30 @@
+server:
+  host: 127.0.0.1
+  port: 9090
+  timezone: Asia/Tokyo
+
+provider: twilio
+
+twilio:
+  account_sid: ACtest_account_sid
+  auth_token: test_auth_token
+  validation:
+    require_auth: true
+    validate_phone_format: true
+    check_from_numbers: true
+    require_parameters: true
+  default_behavior: success
+  registered_numbers:
+    - "+15551234567"
+  allowed_from_numbers:
+    - "+15550000001"
+  failure_numbers:
+    - "+15559999999"
+  callbacks:
+    enabled: true
+    delay_seconds: 1
+    retry_attempts: 2
+    retry_delay_seconds: 3
+
+database:
+  path: "./testdata/tmp/test.db"

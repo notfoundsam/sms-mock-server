@@ -1,0 +1,24 @@
+# Local build artifacts
+/bin/
+*.test
+coverage.out
+coverage.html
+data/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Git / Docker
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Docs / plans (not needed in image)
+docs/
+README.md

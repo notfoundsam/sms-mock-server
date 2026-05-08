@@ -1,0 +1,32 @@
+<div hx-get="/ui/fragments/recent-messages" hx-trigger="every 3s" hx-swap="outerHTML">
+{{if .RecentMessages}}
+<table style="margin-bottom: 40px;">
+    <thead>
+        <tr>
+            <th>SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Body</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .RecentMessages}}
+        <tr onclick="showMessageDetail('{{ .SID }}')" style="cursor: pointer;">
+            <td><code>{{ truncate .SID 20 }}</code></td>
+            <td class="phone">{{ .From }}</td>
+            <td class="phone">{{ .To }}</td>
+            <td>{{ truncate .Body 50 }}</td>
+            <td><span class="status {{ .Status }}">{{ .Status }}</span></td>
+            <td class="timestamp">{{ formatTime .CreatedAt }}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}
+<div class="empty-state">
+    <p>No messages yet. Send your first SMS to get started!</p>
+</div>
+{{end}}
+</div>

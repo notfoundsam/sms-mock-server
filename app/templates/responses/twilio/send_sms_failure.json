@@ -1,0 +1,24 @@
+{
+  "sid": "{{ .MessageSID }}",
+  "date_created": "{{ .DateCreated }}",
+  "date_updated": "{{ .DateUpdated }}",
+  "date_sent": null,
+  "account_sid": "{{ .AccountSid }}",
+  "to": {{ .Request.To | json }},
+  "from": {{ .Request.From | json }},
+  "messaging_service_sid": null,
+  "body": {{ .Request.Body | json }},
+  "status": "{{ .Status }}",
+  "num_segments": "{{ .NumSegments }}",
+  "num_media": "0",
+  "direction": "outbound-api",
+  "api_version": "2010-04-01",
+  "price": null,
+  "price_unit": "USD",
+  "error_code": null,
+  "error_message": null,
+  "uri": "/2010-04-01/Accounts/{{ .AccountSid }}/Messages/{{ .MessageSID }}.json",
+  "subresource_uris": {
+    "media": "/2010-04-01/Accounts/{{ .AccountSid }}/Messages/{{ .MessageSID }}/Media.json"
+  }
+}

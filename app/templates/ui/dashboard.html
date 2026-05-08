@@ -1,0 +1,17 @@
+{{define "title"}}Dashboard - SMS Mock Server{{end}}
+{{define "content"}}
+<div hx-get="/ui/fragments/stats" hx-trigger="every 3s" hx-swap="outerHTML">
+{{template "fragments/stats.html" .}}
+</div>
+
+<h2 style="margin-bottom: 20px;">Recent Messages</h2>
+<div hx-get="/ui/fragments/recent-messages" hx-trigger="every 3s" hx-swap="outerHTML">
+{{template "fragments/recent_messages.html" .}}
+</div>
+
+<h2 style="margin-bottom: 20px;">Recent Calls</h2>
+<div hx-get="/ui/fragments/recent-calls" hx-trigger="every 3s" hx-swap="outerHTML">
+{{template "fragments/recent_calls.html" .}}
+</div>
+{{end}}
+{{template "base" .}}

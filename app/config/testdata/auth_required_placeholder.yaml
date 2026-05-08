@@ -1,0 +1,10 @@
+provider: twilio
+
+twilio:
+  account_sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+  auth_token: real_token
+  validation:
+    require_auth: true
+
+database:
+  path: "./testdata/tmp/bad.db"

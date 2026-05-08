@@ -1,0 +1,42 @@
+<div class="modal-header">
+    <h2>Call Details</h2>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body">
+    <div class="detail-row">
+        <div class="detail-label">Call SID</div>
+        <div class="detail-value"><code>{{ .Call.SID }}</code></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value"><span class="status {{ .Call.Status }}">{{ .Call.Status }}</span></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">From</div>
+        <div class="detail-value phone">{{ .Call.From }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">To</div>
+        <div class="detail-value phone">{{ .Call.To }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">TwiML URL</div>
+        <div class="detail-value">{{if .Call.TwiMLURL}}{{ .Call.TwiMLURL }}{{else}}None{{end}}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Callback URL</div>
+        <div class="detail-value">{{if .Call.CallbackURL}}{{ .Call.CallbackURL }}{{else}}None{{end}}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Provider</div>
+        <div class="detail-value">{{ .Call.Provider }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Created At</div>
+        <div class="detail-value timestamp">{{ formatTime .Call.CreatedAt }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Updated At</div>
+        <div class="detail-value timestamp">{{ formatTime .Call.UpdatedAt }}</div>
+    </div>
+</div>

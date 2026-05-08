@@ -1,0 +1,17 @@
+{{if gt .TotalPages 1}}
+<div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+    {{if gt .Page 1}}
+    <a href="?page={{ sub .Page 1 }}" class="pagination-btn" style="padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Previous</a>
+    {{else}}
+    <span class="pagination-btn disabled" style="padding: 8px 16px; background: #95a5a6; color: white; border-radius: 4px; opacity: 0.5;">Previous</span>
+    {{end}}
+
+    <span style="padding: 8px 16px;">Page {{ .Page }} of {{ .TotalPages }}</span>
+
+    {{if lt .Page .TotalPages}}
+    <a href="?page={{ add .Page 1 }}" class="pagination-btn" style="padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Next</a>
+    {{else}}
+    <span class="pagination-btn disabled" style="padding: 8px 16px; background: #95a5a6; color: white; border-radius: 4px; opacity: 0.5;">Next</span>
+    {{end}}
+</div>
+{{end}}

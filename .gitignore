@@ -1,5 +1,5 @@
-# Python
-tests/__pycache__/
+# Generated runtime data
+/data/
 
 # IDEs
 .vscode/
@@ -18,6 +18,8 @@ Thumbs.db
 # Environment
 .env
 
-# Generated assets
-static/dist/
-static/manifest.json
+# Go
+/bin/
+*.test
+coverage.out
+coverage.html

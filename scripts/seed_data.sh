@@ -53,9 +53,9 @@ send_sms() {
     local body=$3
     local with_callback=$4
 
-    local callback_param=""
+    local callback_args=()
     if [ "$with_callback" = "true" ]; then
-        callback_param="--data-urlencode StatusCallback=${CALLBACK_URL}"
+        callback_args=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
     fi
 
     response=$(curl -s -X POST \
@@ -64,7 +64,7 @@ send_sms() {
         --data-urlencode "From=${from}" \
         --data-urlencode "To=${to}" \
         --data-urlencode "Body=${body}" \
-        $callback_param)
+        "${callback_args[@]}")
 
     if echo "$response" | grep -q '"sid"'; then
         message_sid=$(echo "$response" | grep -o '"sid":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -83,9 +83,9 @@ make_call() {
     local twiml_url=$3
     local with_callback=$4
 
-    local callback_param=""
+    local callback_args=()
     if [ "$with_callback" = "true" ]; then
-        callback_param="--data-urlencode StatusCallback=${CALLBACK_URL}"
+        callback_args=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
     fi
 
     response=$(curl -s -X POST \
@@ -94,7 +94,7 @@ make_call() {
         --data-urlencode "From=${from}" \
         --data-urlencode "To=${to}" \
         --data-urlencode "Url=${twiml_url}" \
-        $callback_param)
+        "${callback_args[@]}")
 
     if echo "$response" | grep -q '"sid"'; then
         call_sid=$(echo "$response" | grep -o '"sid":"[^"]*"' | head -1 | cut -d'"' -f4)

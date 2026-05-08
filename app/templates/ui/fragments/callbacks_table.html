@@ -1,0 +1,53 @@
+<div hx-get="/ui/fragments/callbacks-table?page={{ .Page }}" hx-trigger="every 3s" hx-swap="outerHTML">
+{{if .Callbacks}}
+<table>
+    <thead>
+        <tr>
+            <th>Message SID</th>
+            <th>Message Status</th>
+            <th>HTTP Code</th>
+            <th>Attempt</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Callbacks}}
+        <tr style="cursor: pointer;" hx-get="/ui/fragments/callback-detail/{{ .Log.ID }}" hx-target="#modal-content" hx-swap="innerHTML" onclick="openModal()">
+            <td>
+                {{if or .MessageSID .CallSID}}
+                    <code>{{if .MessageSID}}{{ truncate .MessageSID 20 }}{{else}}{{ truncate .CallSID 20 }}{{end}}</code>
+                {{else}}
+                    -
+                {{end}}
+            </td>
+            <td>
+                {{if or .MessageStatus .CallStatus}}
+                    {{if .MessageStatus}}{{ .MessageStatus }}{{else}}{{ .CallStatus }}{{end}}
+                {{else}}
+                    -
+                {{end}}
+            </td>
+            <td>
+                {{if .Log.StatusCode}}
+                    <span class="status {{if and (ge .Log.StatusCode 200) (lt .Log.StatusCode 300)}}delivered{{else}}failed{{end}}">
+                        {{ .Log.StatusCode }}
+                    </span>
+                {{else}}
+                    <span class="status failed">Error</span>
+                {{end}}
+            </td>
+            <td>{{ .Log.AttemptNumber }}</td>
+            <td class="timestamp">{{ formatTime .Log.CreatedAt }}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+
+{{template "fragments/pagination.html" .}}
+{{else}}
+<div class="empty-state">
+    <p>No callback logs found.</p>
+    <p style="margin-top: 10px; font-size: 14px;">Callback logs will appear here when callbacks are sent.</p>
+</div>
+{{end}}
+</div>

@@ -1,0 +1,33 @@
+<div hx-get="/ui/fragments/calls-table?page={{ .Page }}" hx-trigger="every 3s" hx-swap="outerHTML">
+{{if .Calls}}
+<table>
+    <thead>
+        <tr>
+            <th>Call SID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Calls}}
+        <tr onclick="showCallDetail('{{ .SID }}')" style="cursor: pointer;">
+            <td><code>{{ truncate .SID 20 }}</code></td>
+            <td class="phone">{{ .From }}</td>
+            <td class="phone">{{ .To }}</td>
+            <td><span class="status {{ .Status }}">{{ .Status }}</span></td>
+            <td class="timestamp">{{ formatTime .CreatedAt }}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+
+{{template "fragments/pagination.html" .}}
+{{else}}
+<div class="empty-state">
+    <p>No calls found.</p>
+    <p style="margin-top: 10px; font-size: 14px;">Calls will appear here once you make calls via the API.</p>
+</div>
+{{end}}
+</div>

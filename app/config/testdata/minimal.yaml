@@ -1,0 +1,8 @@
+provider: twilio
+
+twilio:
+  account_sid: ACtest
+  auth_token: testtoken
+
+database:
+  path: "./testdata/tmp/minimal.db"
