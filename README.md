@@ -57,15 +57,20 @@ cd sms-mock-server
 make install
 ```
 
-### Option 4: Local Python
+### Option 4: Local Go build
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Build a static binary into ./bin/sms-mock-server
+make build
 
-# Run the server
-python -m app.main
+# Run it against the local config.yaml
+./bin/sms-mock-server -config config.yaml
+
+# Or skip the build step and use `go run`:
+make run
 ```
+
+Requirements: Go 1.25+ (matches `go.mod`'s declared toolchain). The binary is fully static (`CGO_ENABLED=0`) and embeds all templates and static assets, so the running binary needs nothing besides `config.yaml` and a writable directory for the SQLite DB.
 
 ## Configuration
 
@@ -336,68 +341,87 @@ The mock server emulates common Twilio errors:
 ### Makefile Commands
 
 ```bash
-make install    # Build and start the application
-make up         # Start the application
-make stop       # Stop the application
-make restart    # Restart the application
-make test       # Run tests
-make lint       # Run Ruff linter
-make lint-fix   # Run Ruff linter with auto-fix
-make seed       # Seed database with sample data
-make clean      # Stop and remove volumes
-make logs       # Show application logs
-make help       # Show all commands
+# Go build / test
+make build         # Build static binary into ./bin/sms-mock-server
+make run           # Run the server directly (go run)
+make test          # Go unit tests
+make test-race     # Go unit tests with -race
+make lint          # golangci-lint run ./... (41 linters, see .golangci.yml)
+make tidy          # go mod tidy
+make version       # Print the build version that `make build` would stamp
+
+# Docker / docker compose
+make docker-build  # Build the Docker image
+make install       # Build image + start container
+make up            # Start container
+make stop          # Stop container
+make restart       # Restart container
+make clean         # Stop + remove volumes
+make logs          # Tail container logs
+
+# Data helpers
+make seed          # Seed sample messages/calls (against running server on :8080)
+
+make help          # Show this list
 ```
 
-### Local Development (without Docker)
+### Local Development
+
+The server is a single Go binary; templates, static assets, and migrations are all embedded at build time. No external runtime tooling is required.
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Run unit tests
+go test ./...
+go test -race ./...        # with the race detector
 
-# Run tests
-pytest
+# Lint (requires golangci-lint installed)
+make lint
 
-# Run linter
-ruff check app/ tests/
-
-# Run server with auto-reload
-uvicorn app.main:app --reload --port 8080
+# Run the server (auto-reloading is not built in; rebuild + restart on changes)
+make run
 ```
+
+Test coverage:
+- **Per-package unit tests** (`app/<pkg>/*_test.go`) using stdlib `testing` + `testify`. Includes table-driven validation matrices, fakes for storage / HTTP / clock.
+- **End-to-end smoke test** (`app/main_test.go`) builds the full stack via `httptest.NewServer` and exercises POST Messages → persistence → `/health` → dashboard → static asset → `/clear/all`.
+- All HTTP endpoints (Twilio Messages/Calls, `/health`, `/clear/*`, `/callback-test`, `/favicon.ico`, dashboard, UI fragments) are covered by handler-level tests in `app/httpapi/` and `app/ui/`.
 
 ## Project Structure
 
 ```
 sms-mock-server/
-├── app/
-│   ├── main.py              # FastAPI application
-│   ├── config.py            # Configuration loader
-│   ├── storage.py           # SQLite storage
-│   ├── template_engine.py   # Jinja2 template rendering
-│   ├── callbacks.py         # Async callback handler
-│   ├── ui.py                # Web UI routes
-│   └── providers/
-│       ├── base.py          # Base provider interface
-│       └── twilio.py        # Twilio provider implementation
-├── templates/
-│   ├── responses/twilio/    # JSON response templates
-│   ├── errors/twilio/       # JSON error templates
-│   └── ui/                  # HTML templates
-├── tests/                   # Test suite
+├── app/                       # all Go source (flat layout, single binary)
+│   ├── main.go                # entrypoint
+│   ├── main_test.go           # end-to-end smoke test (httptest.NewServer)
+│   ├── embedded.go            # //go:embed templates + static
+│   ├── config/                # YAML config loader + validation
+│   ├── storage/               # SQLite store, embedded migrations
+│   ├── provider/              # Provider interface + types (ValidationError, etc.)
+│   │   └── twilio/            # Twilio adapter (auth, validation, outcome)
+│   ├── template/              # text/template + html/template engine
+│   ├── callback/              # Async dispatcher: worker pool + Clock-driven retries
+│   ├── httpapi/               # Twilio API routes, /health, /clear/*, middleware
+│   ├── ui/                    # Dashboard + HTMX fragment handlers
+│   ├── clock/                 # Clock interface (real + fake for tests)
+│   ├── testutil/              # Shared fakes for unit tests
+│   ├── templates/             # JSON response/error + HTML UI templates (embedded)
+│   │   ├── responses/twilio/
+│   │   ├── errors/twilio/
+│   │   └── ui/                # base.html + page templates + fragments/
+│   └── static/                # CSS, JS, favicon (embedded)
 ├── scripts/
-│   └── seed_data.sh         # Sample data seeder
+│   └── seed_data.sh           # Seed sample messages/calls via curl
 ├── docs/
-│   ├── DESIGN.md            # Architecture documentation
-│   └── dashboard.png        # UI screenshot
-├── config.yaml              # Server configuration
-├── Makefile                 # Build automation
-├── Dockerfile
+│   ├── DESIGN.md              # Architecture documentation
+│   └── plans/                 # Implementation plans (history)
+├── .github/workflows/         # CI (test + lint + shellcheck) + release (goreleaser)
+├── config.yaml                # Server configuration
+├── Makefile                   # Build / test / docker targets
+├── Dockerfile                 # Multi-stage; static binary on distroless/static
 ├── docker-compose.yml
-├── requirements.txt
-├── requirements-dev.txt     # Dev dependencies (pytest, ruff)
-├── ruff.toml                # Linter configuration
-└── pytest.ini               # Test configuration
+├── .golangci.yml              # Linter config (41 linters)
+├── .goreleaser.yml            # Release automation (binaries + Docker Hub image)
+└── go.mod / go.sum
 ```
 
 ## Troubleshooting
@@ -408,14 +432,15 @@ sms-mock-server/
 
 **Callbacks not being received:**
 - Check that `callbacks.enabled: true` in config
-- Verify the `To` number is in `registered_numbers` list (callbacks only fire for registered numbers)
+- Verify the `To` number is in `registered_numbers` (success flow) or `failure_numbers` (failure flow). Numbers in *neither* list stay queued forever and produce no callbacks — this is intentional, mirroring the original Python behavior.
 - Verify your callback URL is accessible from the mock server
 - For local testing, use the built-in `/callback-test` endpoint: `http://localhost:8080/callback-test`
 - Check callback logs in the UI at `/ui/callbacks`
 
 **Phone number validation errors:**
-- Use E.164 format: `+15551234567` (with + and country code)
+- Use E.164 format: `+15551234567` (with `+` and country code)
 - Or set `validation.validate_phone_format: false`
+- Note: `+1555...` numbers (NANP fictional-use) are **rejected by libphonenumber** when `validate_phone_format: true`. Use real-looking numbers like `+12025550100` (DC area code) for testing with strict validation, or disable the format check for permissive testing.
 
 ## License
 

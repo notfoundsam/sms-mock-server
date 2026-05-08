@@ -24,7 +24,7 @@ A mock server that simulates SMS carrier APIs (starting with Twilio) for develop
 ┌─────────────────────────────────────────────────────────────┐
 │                    SMS Mock Server                           │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │              FastAPI Application                      │   │
+│  │              Go HTTP Server (net/http)                │   │
 │  │  ┌─────────────────┐      ┌─────────────────────┐   │   │
 │  │  │  Provider API   │      │    UI Routes        │   │   │
 │  │  │  Routes         │      │    (HTML/HTMX)      │   │   │
@@ -81,60 +81,65 @@ A mock server that simulates SMS carrier APIs (starting with Twilio) for develop
 ### 3.2 Provider Abstraction Layer
 **Responsibility**: Define interface for different providers
 
-**Base Provider Interface**:
-```python
-class BaseProvider:
-    def send_sms(request_data) -> response
-    def make_call(request_data) -> response
+**Provider Interface** (Go):
+```go
+type Provider interface {
+    Name() string
 
-    # Validation methods
-    def validate_auth(credentials) -> tuple[bool, error_response | None]
-    def validate_parameters(request_data, required_params) -> tuple[bool, error_response | None]
-    def validate_phone_number(number, field_name) -> tuple[bool, error_response | None]
-    def validate_from_number(number) -> tuple[bool, error_response | None]
+    // Validation: auth → SMS/Call params → phone format → From-allowlist.
+    // Returns *ValidationError (with Twilio code, HTTPStatus, template name + vars) on failure.
+    ValidateAuth(authHeader, accountSidFromURL string) error
+    ValidateSMS(req SMSRequest) error
+    ValidateCall(req CallRequest) error
 
-    # Behavior determination
-    def should_succeed(to_number) -> bool  # Checks registered/failure lists + default_behavior
-
-    # Template methods
-    def get_response_template(action, success: bool) -> template
-    def get_error_template(error_type) -> template
-```
-
-**Twilio Adapter**: Implements Twilio-specific logic and validation
-
-### 3.3 Template Engine
-**Responsibility**: Process JSON response templates with variable substitution
-
-**Features**:
-- Load templates from `templates/responses/{provider}/`
-- Support Jinja2 syntax for variables
-- Access to request data, config, and generated values (IDs, timestamps)
-
-**Example Template Variables**:
-```json
-{
-  "sid": "{{ message_sid }}",
-  "from": "{{ request.From }}",
-  "to": "{{ request.To }}",
-  "body": "{{ request.Body }}",
-  "status": "{{ status }}",
-  "date_created": "{{ timestamp }}"
+    // Behavior determination — used by the dispatcher to pick a status flow.
+    IsKnownNumber(toNumber string) bool   // in registered/failure list?
+    ShouldSucceed(toNumber string) bool   // failure → false; registered → true; else default_behavior
 }
 ```
+
+`ValidationError` carries the Twilio error code, HTTP status, and the name of the
+JSON template to render. Handlers convert it to a response in one line via `writeError`.
+
+**Twilio Adapter**: implements `Provider` with auth via HTTP Basic, libphonenumber-based
+phone validation (`nyaruka/phonenumbers`), and registered/failure-number lookup.
+
+### 3.3 Template Engine
+**Responsibility**: Render JSON response templates and HTML UI templates with variable substitution
+
+**Features**:
+- Loads templates from an `embed.FS` (baked into the binary at build time, no runtime filesystem dependency).
+- Uses Go's stdlib `text/template` for JSON output (no auto-escaping; `json` funcmap handles safe interpolation of arbitrary strings) and `html/template` for UI pages (auto-escaping).
+- Access to request data, config, and generated values (IDs, timestamps) via typed structs.
+
+**Example Response Template**:
+```json
+{
+  "sid": "{{ .MessageSID }}",
+  "from": {{ .Request.From | json }},
+  "to": {{ .Request.To | json }},
+  "body": {{ .Request.Body | json }},
+  "status": "{{ .Status }}",
+  "date_created": "{{ .DateCreated }}"
+}
+```
+The `| json` pipe escapes user-controlled fields safely (matters for `Body` containing quotes/backslashes/newlines).
 
 ### 3.4 Callback Handler
 **Responsibility**: Asynchronous callback delivery to client URLs
 
 **Features**:
-- Queue callback requests
-- Configurable delay simulation
-- Retry logic with exponential backoff
-- Support for different callback types (delivery status, call events)
-- Log callback attempts and responses
+- Worker pool draining a buffered job channel
+- Status flow scheduled via a `Clock` interface (`time.AfterFunc` in production, fake clock in tests)
+- Fixed retry delay between attempts (`callbacks.retry_delay_seconds`), max `callbacks.retry_attempts` per status; 2xx response counts as success
+- Status update in DB happens regardless of HTTP delivery result; HTTP failure only affects callback delivery, not the persisted status
+- Log every attempt to `callback_logs`, including transport errors (status_code = 0)
+- Graceful shutdown: `Close(ctx)` drains in-flight jobs; late-firing timers detect the shutdown flag and skip all writes
 
 ### 3.5 Storage Layer
-**Responsibility**: Persist messages, calls, and delivery events
+**Responsibility**: Persist messages, calls, delivery events, and callback logs
+
+**Implementation**: Pure-Go SQLite via `modernc.org/sqlite` (no CGO required), wrapped in a `Store` interface so handlers and the dispatcher can be unit-tested against the in-memory `testutil.FakeStore`. WAL mode + busy timeout. Migrations live under `app/storage/migrations/` and are embedded into the binary; they're applied at startup, tracked in `schema_migrations`.
 
 **SQLite Schema**:
 
@@ -239,10 +244,11 @@ twilio:
 
 database:
   path: "./data/mock_server.db"
-
-templates:
-  path: "./templates/responses"
 ```
+
+> Note: in the Go implementation, templates are embedded into the binary via
+> `//go:embed`, so there is no `templates.path` config field. To customize
+> templates, edit the files under `templates/` and rebuild the binary.
 
 #### Number Validation Behavior
 
@@ -263,6 +269,10 @@ The server determines message/call success based on the destination number (`To`
 - Only numbers in `registered_numbers` will succeed
 - Stricter validation, mimics production constraints
 - Useful for testing registration flows
+
+> **Important:** numbers NOT in `registered_numbers` AND NOT in `failure_numbers` stay queued indefinitely with no callbacks fired — independent of `default_behavior`. This matches the Python implementation's dispatcher behavior. Don't be surprised when an arbitrary unknown number doesn't progress past `queued`.
+
+> **libphonenumber note:** `+1555...` numbers (NANP fictional-use) are flagged invalid by libphonenumber when `validate_phone_format: true`. The example numbers in this doc are illustrative; for strict testing, use real-looking numbers (e.g. `+12025550100` — Washington DC area code).
 
 **Examples**:
 
@@ -361,7 +371,7 @@ validation:
    - Shows status code, attempt number, response body
    - Previous/Next pagination controls
 
-**Technology**: Server-side rendered HTML with Jinja2 + HTMX for auto-refresh and dynamic updates
+**Technology**: Server-side rendered HTML with stdlib `html/template` + HTMX for auto-refresh and dynamic updates
 
 **HTMX Features**:
 - Automatic polling (`hx-trigger="every 3s"`) for real-time updates
@@ -398,13 +408,17 @@ validation:
 
 7. Response → Return to client
 
-8. Callback Handler → Queue delivery status updates (if callback URL provided):
-   - Success flow: queued → sent → delivered
-   - Failure flow: queued → failed
+8. Callback Handler → Schedule status flow based on `IsKnownNumber(To)`:
+   - To in `registered_numbers` → queued → sent → delivered (success flow)
+   - To in `failure_numbers` → queued → failed
+   - To in NEITHER list → no progression, stays queued forever (no callbacks fired)
 
-9. Background Task → Send status callbacks after configured delay
+9. For each scheduled status (after `delay_seconds` increments):
+   - Update the message status in DB
+   - Persist a `delivery_events` row
+   - If `StatusCallback` URL was provided AND `callbacks.enabled: true`: enqueue an HTTP POST to the URL via the worker pool
 
-10. Storage → Update message status and log callback attempts
+10. Worker pool → POST callback (with retries on non-2xx or transport error); each attempt logs a `callback_logs` row.
 ```
 
 ### 4.2 Call Making Flow
@@ -427,9 +441,9 @@ validation:
 
 7. Response → Return to client
 
-8. Callback Handler → Fetch TwiML from URL (if provided)
+8. TwiML URL is stored on the call record but NOT fetched (mock-only behavior).
 
-9. Callback Handler → Queue call status callbacks:
+9. Callback Handler → Queue call status callbacks (if callback URL provided):
    - Success flow: queued → ringing → in-progress → completed
    - Failure flow: queued → failed
 
@@ -441,64 +455,55 @@ validation:
 ### 5.1 Directory Structure
 ```
 /
-├── config.yaml
-├── templates/
-│   ├── responses/
-│   │   └── twilio/
-│   │       ├── send_sms_success.json
-│   │       ├── send_sms_failure.json
-│   │       ├── make_call_success.json
-│   │       ├── make_call_failure.json
-│   │       ├── delivery_status.json
-│   │       └── call_status.json
-│   ├── errors/
-│   │   └── twilio/
-│   │       ├── auth_failed.json           # 401 - Invalid credentials
-│   │       ├── missing_parameter.json     # 400 - Missing required param
-│   │       ├── invalid_phone_number.json  # 400 - Invalid format
-│   │       └── invalid_from_number.json   # 400 - From not allowed
-│   └── ui/
-│       ├── base.html           # Base template with navbar, modal, styles
-│       ├── dashboard.html      # Dashboard page
-│       ├── messages.html       # Messages list page
-│       ├── calls.html          # Calls list page
-│       ├── callbacks.html      # Callbacks list page
-│       └── fragments/          # HTMX fragments for auto-refresh
-│           ├── stats.html
-│           ├── recent_messages.html
-│           ├── recent_calls.html
-│           ├── messages_table.html
-│           ├── calls_table.html
-│           ├── callbacks_table.html
-│           ├── message_detail.html    # Modal content
-│           ├── call_detail.html       # Modal content
-│           └── pagination.html        # Reusable pagination controls
-├── scripts/
-│   └── seed_data.sh                   # Sample data seeder
-├── tests/                             # Test suite
-├── docs/                              # Documentation
-├── Makefile                           # Build automation
-├── ruff.toml                          # Linter configuration
-└── pytest.ini                         # Test configuration
+├── app/                              # all Go source (flat layout)
+│   ├── main.go                       # entrypoint
+│   ├── embedded.go                   # //go:embed templates + static
+│   ├── config/                       # YAML config loader + validation
+│   ├── storage/                      # SQLite store (modernc.org/sqlite, no CGO)
+│   ├── provider/                     # Provider interface + ValidationError
+│   │   └── twilio/                   # Twilio adapter
+│   ├── template/                     # text/template + html/template engine
+│   ├── callback/                     # async dispatcher (worker pool, Clock interface)
+│   ├── httpapi/                      # Twilio routes, /health, /clear/*, middleware
+│   ├── ui/                           # Dashboard + HTMX fragment handlers
+│   ├── clock/                        # Clock interface (real + fake for tests)
+│   ├── testutil/                     # Shared fakes for unit tests
+│   ├── templates/                    # JSON + HTML templates (embedded into binary)
+│   │   ├── responses/twilio/         # send_sms / make_call success / failure
+│   │   ├── errors/twilio/            # auth_failed, missing_parameter, invalid_*
+│   │   └── ui/                       # base.html, dashboard.html, fragments/
+│   └── static/                       # CSS, JS, favicon (embedded)
+├── scripts/                          # seed_data.sh (curl-based sample data)
+├── docs/                             # DESIGN.md + plans
+├── .github/workflows/                # CI (test + lint) + release (goreleaser)
+├── config.yaml                       # Server configuration
+├── Makefile                          # Build / test / docker targets
+├── Dockerfile                        # Multi-stage; static binary on distroless/static
+├── docker-compose.yml
+├── .golangci.yml                     # Linter config (41 linters)
+├── .goreleaser.yml                   # Release automation
+└── go.mod / go.sum
 ```
 
 Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persistence.
+Templates and static assets are baked into the binary at build time via `//go:embed`,
+so the runtime container needs only `config.yaml` and a writable `data/` dir.
 
 ### 5.2 Response Template Example
-**File**: `templates/responses/twilio/send_sms_success.json`
+**File**: `app/templates/responses/twilio/send_sms_success.json`
 ```json
 {
-  "sid": "{{ message_sid }}",
-  "date_created": "{{ date_created }}",
-  "date_updated": "{{ date_updated }}",
+  "sid": "{{ .MessageSID }}",
+  "date_created": "{{ .DateCreated }}",
+  "date_updated": "{{ .DateUpdated }}",
   "date_sent": null,
-  "account_sid": "{{ account_sid }}",
-  "to": "{{ request.To }}",
-  "from": "{{ request.From }}",
+  "account_sid": "{{ .AccountSid }}",
+  "to": {{ .Request.To | json }},
+  "from": {{ .Request.From | json }},
   "messaging_service_sid": null,
-  "body": "{{ request.Body }}",
-  "status": "queued",
-  "num_segments": "1",
+  "body": {{ .Request.Body | json }},
+  "status": "{{ .Status }}",
+  "num_segments": "{{ .NumSegments }}",
   "num_media": "0",
   "direction": "outbound-api",
   "api_version": "2010-04-01",
@@ -506,16 +511,18 @@ Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persist
   "price_unit": "USD",
   "error_code": null,
   "error_message": null,
-  "uri": "/2010-04-01/Accounts/{{ account_sid }}/Messages/{{ message_sid }}.json",
+  "uri": "/2010-04-01/Accounts/{{ .AccountSid }}/Messages/{{ .MessageSID }}.json",
   "subresource_uris": {
-    "media": "/2010-04-01/Accounts/{{ account_sid }}/Messages/{{ message_sid }}/Media.json"
+    "media": "/2010-04-01/Accounts/{{ .AccountSid }}/Messages/{{ .MessageSID }}/Media.json"
   }
 }
 ```
 
+The `| json` pipe wraps user-controlled fields (To, From, Body) in JSON-safe quoted form, handling escapes for quotes, backslashes, and control characters.
+
 ### 5.3 Error Template Examples
 
-**File**: `templates/errors/twilio/auth_failed.json`
+**File**: `app/templates/errors/twilio/auth_failed.json`
 ```json
 {
   "code": 20003,
@@ -525,35 +532,37 @@ Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persist
 }
 ```
 
-**File**: `templates/errors/twilio/missing_parameter.json`
+**File**: `app/templates/errors/twilio/missing_parameter.json`
 ```json
 {
   "code": 21604,
-  "message": "The required parameter '{{ parameter }}' is missing.",
+  "message": "The required parameter '{{ .parameter }}' is missing.",
   "more_info": "https://www.twilio.com/docs/errors/21604",
   "status": 400
 }
 ```
 
-**File**: `templates/errors/twilio/invalid_phone_number.json`
+**File**: `app/templates/errors/twilio/invalid_phone_number.json`
 ```json
 {
   "code": 21211,
-  "message": "The '{{ field }}' number {{ number }} is not a valid phone number.",
+  "message": "The '{{ .field }}' number {{ .number }} is not a valid phone number.",
   "more_info": "https://www.twilio.com/docs/errors/21211",
   "status": 400
 }
 ```
 
-**File**: `templates/errors/twilio/invalid_from_number.json`
+**File**: `app/templates/errors/twilio/invalid_from_number.json`
 ```json
 {
   "code": 21606,
-  "message": "The 'From' phone number {{ from_number }} is not a valid, message-capable Twilio phone number.",
+  "message": "The 'From' phone number {{ .from_number }} is not a valid, message-capable Twilio phone number.",
   "more_info": "https://www.twilio.com/docs/errors/21606",
   "status": 400
 }
 ```
+
+Error templates receive their interpolation vars as a `map[string]string`, accessed via `{{ .keyname }}` — Go template syntax for map field access.
 
 ## 6. API Design
 
@@ -589,9 +598,9 @@ Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persist
 ```json
 {
   "status": "healthy",
-  "version": "1.0.0",
+  "version": "abc1234-20260508T132045",
   "provider": "twilio",
-  "timestamp": "2024-01-15T10:30:00Z",
+  "timestamp": "2026-01-15T10:30:00.000000Z",
   "statistics": {
     "messages": 42,
     "calls": 15,
@@ -599,6 +608,8 @@ Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persist
   }
 }
 ```
+
+`version` is injected at build time via `-ldflags -X .../httpapi.version=...`. The Makefile stamps it as `<short-git-hash><-dirty>-<UTC-timestamp>`; release builds (`make docker-build VERSION=v1.0.0`) override with the release tag.
 
 **HTTP Status**: 200 OK
 
@@ -866,7 +877,6 @@ services:
       - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./templates:/app/templates
       - ./data:/app/data
     networks:
       - app-network
@@ -925,22 +935,22 @@ TWILIO_API_BASE_URL=http://localhost:8080
 ## 7. Deployment
 
 ### 7.1 Docker Container
-**Dockerfile Strategy**: Multi-stage build
-- Stage 1: Install dependencies
-- Stage 2: Copy application code
-- Stage 3: Slim runtime image
+**Dockerfile Strategy**: Two-stage build
+- Stage 1 (`golang:alpine`): Compile a fully static binary with `CGO_ENABLED=0`. Templates and static assets are baked in via `//go:embed` at compile time.
+- Stage 2 (`gcr.io/distroless/static:nonroot`): Copy in the binary and `config.yaml`. Final image is ~17–20 MB. No shell, no curl, no package manager — only the binary, default config, and a non-root user.
 
 **Exposed Ports**:
 - `8080` - HTTP
 
 **Volumes**:
-- `/app/config.yaml` - Configuration file
-- `/app/templates` - Response templates (JSON templates for responses/errors)
-- `/app/data` - SQLite database
+- `/app/config.yaml` - Configuration file (overrides the one baked into the image)
+- `/app/data` - SQLite database (persisted across restarts)
+
+Templates are embedded into the binary; there is no `/app/templates` mount.
 
 **Environment Variables**:
-- `CONFIG_PATH` - Override config file location
-- `LOG_LEVEL` - Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+- `CONFIG_PATH` - Override config file location (default: `/app/config.yaml`)
+- `LOG_LEVEL` - Logging verbosity (`DEBUG`, `INFO`, `WARN`/`WARNING`, `ERROR`; default `INFO`)
 
 ### 7.2 Docker Compose Example
 
@@ -954,7 +964,6 @@ services:
       - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./templates:/app/templates
       - ./data:/app/data
     environment:
       - LOG_LEVEL=INFO
@@ -970,23 +979,20 @@ services:
       - "8080:8080"
     volumes:
       - ./sms-mock-server/config.yaml:/app/config.yaml
-      - ./sms-mock-server/templates:/app/templates
       - ./sms-mock-server/data:/app/data
     environment:
       - LOG_LEVEL=INFO
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    # Note: the distroless/static base image ships no shell or curl, so the
+    # standard CMD-based healthcheck is unavailable. Compose's port-binding
+    # readiness is sufficient for `depends_on` semantics; if you need a true
+    # healthcheck, build a tiny healthcheck binary into the image.
 
   your-application:
     build: ./your-app
     depends_on:
-      sms-mock-server:
-        condition: service_healthy
+      - sms-mock-server
     environment:
       - TWILIO_API_BASE_URL=http://sms-mock-server:8080
       - TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -1004,11 +1010,11 @@ networks:
 ### 8.1 Adding New Providers
 To add a new provider (e.g., MessageBird, Vonage):
 
-1. Create new adapter in `app/providers/{provider_name}.py`
-2. Implement `BaseProvider` interface
-3. Add provider-specific templates in `templates/responses/{provider_name}/`
-4. Update `config.yaml` with provider configuration
-5. Register provider in provider factory
+1. Create new adapter package at `app/provider/{provider_name}/` implementing `provider.Provider`
+2. Add provider-specific templates under `app/templates/responses/{provider_name}/` and `app/templates/errors/{provider_name}/`
+3. Update `config.yaml` with provider configuration
+4. Register provider in the factory map in `app/main.go`
+5. Rebuild the binary (templates are embedded)
 
 ### 8.2 Custom Response Behavior
 - Edit JSON templates to modify response structure
@@ -1032,48 +1038,35 @@ To add a new provider (e.g., MessageBird, Vonage):
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| Language | Python 3.13+ | Rapid development, excellent libraries |
-| Web Framework | FastAPI | Modern, async, auto-documentation |
-| Template Engine | Jinja2 | Variable substitution, server-side rendering |
-| Database | SQLite | Lightweight, file-based, no external dependencies |
+| Language | Go 1.25+ | Single static binary, low footprint |
+| Web Framework | stdlib `net/http` (Go 1.22+ mux) | Zero dependencies, native path patterns |
+| Phone Validation | `nyaruka/phonenumbers` | Go port of Google libphonenumber |
+| Template Engine | `text/template` (JSON) + `html/template` (UI) | Stdlib; auto-escaping for HTML, explicit `json` funcmap for JSON safety |
+| Database | SQLite via `modernc.org/sqlite` | Pure-Go driver — no CGO, fully static binary |
+| Embedded Assets | `embed.FS` | Templates + static files baked into the binary |
 | UI | HTML + HTMX | Simple, no heavy frontend framework |
-| Containerization | Docker | Portable, isolated environment |
-| Config Format | YAML | Human-readable, easy to edit |
+| Containerization | Docker (`gcr.io/distroless/static:nonroot`) | Minimal runtime, ~17–20 MB image |
+| Config Format | YAML (`gopkg.in/yaml.v3`) | Human-readable, easy to edit |
 | Response Format | JSON | Standard API format |
 
 ## 10. Development Approach
 
-### 10.1 Phase 1: Core Functionality
-- Basic FastAPI application setup (HTTP only)
-- Config loader (including validation settings)
-- Health check endpoint (`/health`)
-- Twilio SMS endpoint
-- Template engine (responses + errors)
-- Request validation and error handling
-- SQLite storage
-- Simple response handling
+The codebase is organized into single-responsibility packages under `app/`,
+each with its own unit tests. Tests use stdlib `testing` plus `testify`
+(`assert` / `require`) for clearer assertions.
 
-### 10.2 Phase 2: Callbacks
-- Async callback handler
-- Background task queue
-- Delivery status simulation
-- Callback logging
+**Test layers:**
+- Unit tests per package (`go test ./...`) — fast, deterministic, use fakes (`app/testutil/`) for storage / HTTP / clock.
+- Race detector in CI (`go test -race ./...`).
+- Smoke test (`app/main_test.go::TestSmoke_EndToEnd`) — builds the full stack via `httptest.NewServer` and exercises the API end-to-end (POST Messages → persistence → /health → dashboard → static asset → /clear/all).
+- Linting (`make lint`) — `golangci-lint` with 41 linters configured in `.golangci.yml`.
 
-### 10.3 Phase 3: Calls Support
-- Twilio call endpoint
-- TwiML fetching
-- Call status simulation
-
-### 10.4 Phase 4: UI
-- Dashboard
-- Messages list
-- Calls list
-- Callback logs
-
-### 10.5 Phase 5: Dockerization
-- Dockerfile
-- Docker Compose
-- Documentation
+**Adding a new feature** typically means:
+1. Add or extend the relevant `app/<pkg>/` types and functions.
+2. Add unit tests in the same package.
+3. If the change adds an HTTP endpoint, add handler tests in `app/httpapi/` or `app/ui/` covering success + error paths.
+4. Update relevant templates if the response shape changed.
+5. Ensure `make test-race` and `make lint` are clean before committing.
 
 ## 11. Non-Goals (Keeping it Simple)
 
