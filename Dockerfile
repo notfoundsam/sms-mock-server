@@ -1,47 +1,51 @@
-# Multi-stage build for SMS Mock Server
+# Multi-stage build for the SMS Mock Server.
+# Produces a static, distroless image (~10-15 MB target).
 
-# Stage 1: Base image with dependencies
-FROM python:3.13-alpine AS base
+# Stage 1: build the static binary
+FROM golang:1.25-alpine AS builder
 
-# Set working directory
+WORKDIR /src
+
+# Pre-fetch deps for caching: copy go.mod/go.sum first.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source. .dockerignore excludes tests/, docs/, etc.
+COPY . .
+
+# Build flags:
+#   CGO_ENABLED=0 → fully static, no glibc dependency, runs on distroless/static
+#   -ldflags -s -w → strip symbol & debug info (smaller binary)
+#   -ldflags -X .../httpapi.version=$VERSION → embed git tag/commit if provided
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build \
+      -trimpath \
+      -ldflags="-s -w -X github.com/notfoundsam/sms-mock-server/app/httpapi.version=${VERSION}" \
+      -o /out/sms-mock-server \
+      ./app
+
+# Stage 2: distroless static runtime image.
+# distroless/static contains glibc-free CA certs + tzdata + nonroot user — nothing else.
+FROM gcr.io/distroless/static:nonroot
+
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Binary
+COPY --from=builder /out/sms-mock-server /app/sms-mock-server
 
-# Copy static files and build script, then build assets
-COPY static/ ./static/
-COPY scripts/ ./scripts/
-RUN python scripts/build_assets.py
+# Default config (overridable via volume mount in docker-compose).
+COPY --chown=nonroot:nonroot config.yaml /app/config.yaml
 
-# Stage 2: Final image
-FROM python:3.13-alpine
+# Data directory (SQLite DB) — persisted via volume.
+# distroless/static doesn't have `mkdir`; the dir comes from the base image's
+# nonroot home or is created on first DB open.
 
-# Set working directory
-WORKDIR /app
-
-# Copy Python dependencies from base stage
-COPY --from=base /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=base /usr/local/bin /usr/local/bin
-
-# Copy built static assets (includes dist/ and manifest.json)
-COPY --from=base /app/static/ ./static/
-
-# Copy application code
-COPY app/ ./app/
-COPY templates/ ./templates/
-COPY config.yaml .
-
-# Create data directory
-RUN mkdir -p data
-
-# Expose ports
 EXPOSE 8080
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 
-# Run the application
-CMD ["python", "-m", "app.main"]
+USER nonroot:nonroot
+
+ENTRYPOINT ["/app/sms-mock-server"]
+CMD ["-config", "/app/config.yaml"]

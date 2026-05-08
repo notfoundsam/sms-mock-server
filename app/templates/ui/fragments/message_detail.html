@@ -1,0 +1,42 @@
+<div class="modal-header">
+    <h2>Message Details</h2>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body">
+    <div class="detail-row">
+        <div class="detail-label">Message SID</div>
+        <div class="detail-value"><code>{{ .Message.SID }}</code></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value"><span class="status {{ .Message.Status }}">{{ .Message.Status }}</span></div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">From</div>
+        <div class="detail-value phone">{{ .Message.From }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">To</div>
+        <div class="detail-value phone">{{ .Message.To }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Body</div>
+        <div class="detail-value">{{ .Message.Body }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Callback URL</div>
+        <div class="detail-value">{{if .Message.CallbackURL}}{{ .Message.CallbackURL }}{{else}}None{{end}}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Provider</div>
+        <div class="detail-value">{{ .Message.Provider }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Created At</div>
+        <div class="detail-value timestamp">{{ formatTime .Message.CreatedAt }}</div>
+    </div>
+    <div class="detail-row">
+        <div class="detail-label">Updated At</div>
+        <div class="detail-value timestamp">{{ formatTime .Message.UpdatedAt }}</div>
+    </div>
+</div>

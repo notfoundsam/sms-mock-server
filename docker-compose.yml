@@ -5,25 +5,19 @@ services:
     ports:
       - "8080:8080"
     volumes:
+      # Override the embedded config without rebuilding the image.
       - ./config.yaml:/app/config.yaml
-      - ./templates:/app/templates
-      - ./static:/app/static
-      - ./scripts:/app/scripts
+      # Persist SQLite DB across container restarts.
       - sms-mock-data:/app/data
-      - ./tests:/app/tests
-      - ./pytest.ini:/app/pytest.ini
-      - ./requirements.txt:/app/requirements.txt
-      - ./requirements-dev.txt:/app/requirements-dev.txt
     environment:
       - LOG_LEVEL=INFO
     networks:
       - sms-mock-network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+    # Note: distroless/static base image has no shell or curl/wget, so the
+    # classic shell-based HEALTHCHECK doesn't work. Compose still waits for
+    # the container to start and the port to bind, which is sufficient for
+    # `depends_on` semantics. If a healthcheck is required, build a tiny
+    # healthcheck binary into the image and call it here.
     restart: unless-stopped
 
 networks:
