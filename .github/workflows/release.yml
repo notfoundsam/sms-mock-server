@@ -32,7 +32,10 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@v7
         with:
-          version: latest
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pin the release to the exact tag that triggered this run, so goreleaser
+          # never picks the wrong tag when multiple tags point at the same commit.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
