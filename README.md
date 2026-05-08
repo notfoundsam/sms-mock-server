@@ -46,18 +46,7 @@ services:
       - ./data:/app/data
 ```
 
-### Option 3: Build from Source
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd sms-mock-server
-
-# Build and run
-make install
-```
-
-### Option 4: Local Go build
+### Option 3: Local Go build
 
 ```bash
 # Build a static binary into ./bin/sms-mock-server
@@ -303,7 +292,7 @@ When you send an SMS/call with a `StatusCallback` URL, the mock server will:
 ```yaml
 services:
   sms-mock-server:
-    build: ./sms-mock-server
+    image: notfoundsam/sms-mock-server:latest
     ports:
       - "8080:8080"
     networks:
@@ -350,14 +339,13 @@ make lint          # golangci-lint run ./... (41 linters, see .golangci.yml)
 make tidy          # go mod tidy
 make version       # Print the build version that `make build` would stamp
 
-# Docker / docker compose
-make docker-build  # Build the Docker image
-make install       # Build image + start container
-make up            # Start container
-make stop          # Stop container
-make restart       # Restart container
-make clean         # Stop + remove volumes
-make logs          # Tail container logs
+# Docker / docker compose (uses published image from Docker Hub)
+make up               # Pull latest image + start container
+make stop             # Stop container
+make restart          # Restart container
+make clean            # Stop + remove volumes
+make logs             # Tail container logs
+make docker-snapshot  # Build a local image via goreleaser (no push)
 
 # Data helpers
 make seed          # Seed sample messages/calls (against running server on :8080)

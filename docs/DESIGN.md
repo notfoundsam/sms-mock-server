@@ -609,7 +609,7 @@ Error templates receive their interpolation vars as a `map[string]string`, acces
 }
 ```
 
-`version` is injected at build time via `-ldflags -X .../httpapi.version=...`. The Makefile stamps it as `<short-git-hash><-dirty>-<UTC-timestamp>`; release builds (`make docker-build VERSION=v1.0.0`) override with the release tag.
+`version` is injected at build time via `-ldflags -X .../httpapi.version=...`. The Makefile stamps it as `<short-git-hash><-dirty>-<UTC-timestamp>`; release builds (driven by goreleaser on `v*` tags) stamp it as `<tag>-<short-commit>`.
 
 **HTTP Status**: 200 OK
 
@@ -871,7 +871,7 @@ When running the mock server in Docker and your application in another container
 ```yaml
 services:
   sms-mock-server:
-    build: .
+    image: notfoundsam/sms-mock-server:latest
     container_name: sms-mock-server
     ports:
       - "8080:8080"
@@ -958,7 +958,7 @@ Templates are embedded into the binary; there is no `/app/templates` mount.
 ```yaml
 services:
   sms-mock-server:
-    build: .
+    image: notfoundsam/sms-mock-server:latest
     container_name: sms-mock-server
     ports:
       - "8080:8080"
@@ -973,13 +973,13 @@ services:
 ```yaml
 services:
   sms-mock-server:
-    build: ./sms-mock-server
+    image: notfoundsam/sms-mock-server:latest
     container_name: sms-mock-server
     ports:
       - "8080:8080"
     volumes:
-      - ./sms-mock-server/config.yaml:/app/config.yaml
-      - ./sms-mock-server/data:/app/data
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
     environment:
       - LOG_LEVEL=INFO
     networks:

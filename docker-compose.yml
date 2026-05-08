@@ -1,6 +1,6 @@
 services:
   sms-mock-server:
-    build: .
+    image: notfoundsam/sms-mock-server:latest
     container_name: sms-mock-server
     ports:
       - "8080:8080"

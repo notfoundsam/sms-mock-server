@@ -35,9 +35,10 @@ dockers:
     goos: linux
     goarch: amd64
     use: buildx
+    extra_files:
+      - config.yaml
     build_flag_templates:
       - --platform=linux/amd64
-      - --build-arg=VERSION={{.Tag}}-{{.ShortCommit}}
     image_templates:
       - "notfoundsam/sms-mock-server:{{ .Version }}-amd64"
       - "notfoundsam/sms-mock-server:latest-amd64"
@@ -45,9 +46,10 @@ dockers:
     goos: linux
     goarch: arm64
     use: buildx
+    extra_files:
+      - config.yaml
     build_flag_templates:
       - --platform=linux/arm64
-      - --build-arg=VERSION={{.Tag}}-{{.ShortCommit}}
     image_templates:
       - "notfoundsam/sms-mock-server:{{ .Version }}-arm64"
       - "notfoundsam/sms-mock-server:latest-arm64"

@@ -1,8 +1,8 @@
 # SMS Mock Server - Makefile
 # Usage: make <target>
 
-.PHONY: build test test-race lint run tidy version docker-build \
-        install up stop restart seed clean logs help
+.PHONY: build test test-race lint run tidy version docker-snapshot \
+        up stop restart seed clean logs help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -59,21 +59,15 @@ version:
 
 # --- Docker / orchestration ---
 
-## docker-build: Build the Docker image
-docker-build:
-	docker build -t sms-mock-server:latest --build-arg VERSION=$(VERSION) .
-	@docker images sms-mock-server:latest
+## docker-snapshot: Build a local Docker image via goreleaser (no push, no tag)
+##                  Produces notfoundsam/sms-mock-server:<snapshot>-amd64/arm64.
+##                  Useful for testing the release Dockerfile locally.
+docker-snapshot:
+	goreleaser release --snapshot --clean
 
-## install: Build Docker image and start the application
-install:
-	$(COMPOSE) build
-	$(COMPOSE) up -d
-	@echo "Waiting for container to be ready..."
-	@sleep 2
-	@echo "SMS Mock Server is running at http://localhost:8080"
-
-## up: Start the application via docker compose
+## up: Pull latest published image and start via docker compose
 up:
+	$(COMPOSE) pull
 	$(COMPOSE) up -d
 	@echo "SMS Mock Server is running at http://localhost:8080"
 
