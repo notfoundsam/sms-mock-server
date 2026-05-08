@@ -1,0 +1,76 @@
+version: 2
+
+project_name: sms-mock-server
+
+builds:
+  - id: sms-mock-server
+    main: ./app
+    binary: sms-mock-server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/notfoundsam/sms-mock-server/app/httpapi.version={{.Tag}}-{{.ShortCommit}}
+
+archives:
+  - id: sms-mock-server
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README.md
+      - config.yaml
+
+# Docker image push to Docker Hub.
+# Auth comes from DOCKERHUB_USERNAME + DOCKERHUB_TOKEN repo secrets;
+# the docker/login-action step in .github/workflows/release.yml runs `docker login`
+# before this step, so goreleaser pushes against an already-authenticated daemon.
+dockers:
+  - id: linux-amd64
+    goos: linux
+    goarch: amd64
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --build-arg=VERSION={{.Tag}}-{{.ShortCommit}}
+    image_templates:
+      - "notfoundsam/sms-mock-server:{{ .Version }}-amd64"
+      - "notfoundsam/sms-mock-server:latest-amd64"
+  - id: linux-arm64
+    goos: linux
+    goarch: arm64
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64
+      - --build-arg=VERSION={{.Tag}}-{{.ShortCommit}}
+    image_templates:
+      - "notfoundsam/sms-mock-server:{{ .Version }}-arm64"
+      - "notfoundsam/sms-mock-server:latest-arm64"
+
+docker_manifests:
+  - name_template: "notfoundsam/sms-mock-server:{{ .Version }}"
+    image_templates:
+      - "notfoundsam/sms-mock-server:{{ .Version }}-amd64"
+      - "notfoundsam/sms-mock-server:{{ .Version }}-arm64"
+  - name_template: "notfoundsam/sms-mock-server:latest"
+    image_templates:
+      - "notfoundsam/sms-mock-server:latest-amd64"
+      - "notfoundsam/sms-mock-server:latest-arm64"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
