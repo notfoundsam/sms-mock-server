@@ -40,7 +40,7 @@ twilio:
     retry_delay_seconds: 5
 
 database:
-  path: "./data/mock_server.db"
-
-templates:
-  path: "./templates/responses"
+  # Default is ephemeral: /tmp is wiped on container restart. To persist
+  # data across restarts, mount a host directory the container can write to
+  # (chown 65532:65532) and override via the SMS_MOCK_DB_PATH env var.
+  path: "/tmp/mock_server.db"

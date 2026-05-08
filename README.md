@@ -43,8 +43,26 @@ services:
       - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./data:/app/data
 ```
+
+### Persistence
+
+By default the SQLite DB lives at `/tmp/mock_server.db` inside the container and is wiped on container restart — fine for the typical "fresh state per test run" use case. To persist data across restarts, set `SMS_MOCK_DB_PATH` to a path inside a mounted volume:
+
+```yaml
+services:
+  sms-mock-server:
+    image: notfoundsam/sms-mock-server:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./data:/data
+    environment:
+      - SMS_MOCK_DB_PATH=/data/mock_server.db
+```
+
+On Linux you must chown the host directory to UID 65532 first (the distroless `nonroot` user the container runs as): `mkdir -p ./data && sudo chown -R 65532:65532 ./data`. Docker Desktop on macOS/Windows handles UID translation automatically.
 
 ### Option 3: Local Go build
 

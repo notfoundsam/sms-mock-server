@@ -79,6 +79,12 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
+	// SMS_MOCK_DB_PATH overrides database.path from config.yaml. This lets
+	// docker-compose set a custom DB location without templating the config.
+	if v := os.Getenv("SMS_MOCK_DB_PATH"); v != "" {
+		cfg.Database.Path = v
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -108,7 +114,7 @@ func defaults() *Config {
 				RetryDelaySeconds: 5,
 			},
 		},
-		Database: Database{Path: "./data/mock_server.db"},
+		Database: Database{Path: "/tmp/mock_server.db"},
 	}
 }
 

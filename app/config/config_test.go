@@ -78,3 +78,14 @@ func TestLoad_envVarFallback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ACtest_account_sid", cfg.Twilio.AccountSid)
 }
+
+func TestLoad_dbPathEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	override := filepath.Join(dir, "override.db")
+	t.Setenv("SMS_MOCK_DB_PATH", override)
+
+	cfg, err := Load("testdata/valid.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, override, cfg.Database.Path,
+		"SMS_MOCK_DB_PATH should override database.path from YAML")
+}

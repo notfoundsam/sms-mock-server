@@ -7,8 +7,6 @@ services:
     volumes:
       # Override the embedded config without rebuilding the image.
       - ./config.yaml:/app/config.yaml
-      # Persist SQLite DB across container restarts.
-      - sms-mock-data:/app/data
     environment:
       - LOG_LEVEL=INFO
     networks:
@@ -16,13 +14,24 @@ services:
     # Note: distroless/static base image has no shell or curl/wget, so the
     # classic shell-based HEALTHCHECK doesn't work. Compose still waits for
     # the container to start and the port to bind, which is sufficient for
-    # `depends_on` semantics. If a healthcheck is required, build a tiny
-    # healthcheck binary into the image and call it here.
+    # `depends_on` semantics.
     restart: unless-stopped
+
+    # --- Persistence (optional) ---
+    # By default the SQLite DB lives at /tmp/mock_server.db inside the
+    # container and is wiped on restart. To persist it across restarts,
+    # uncomment the lines below AND chown the host dir to UID 65532
+    # (the distroless `nonroot` user) before `docker compose up`:
+    #
+    #   mkdir -p ./data && sudo chown -R 65532:65532 ./data
+    #
+    # environment:
+    #   - LOG_LEVEL=INFO
+    #   - SMS_MOCK_DB_PATH=/data/mock_server.db
+    # volumes:
+    #   - ./config.yaml:/app/config.yaml
+    #   - ./data:/data
 
 networks:
   sms-mock-network:
     driver: bridge
-
-volumes:
-  sms-mock-data:
