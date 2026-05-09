@@ -46,16 +46,21 @@ echo -e "${BLUE}SMS Mock Server - Data Seeder${NC}"
 echo -e "${BLUE}======================================${NC}"
 echo ""
 
-# Function to send SMS
+# Function to send SMS. The 5th arg is an optional X-Tags value (a
+# comma-separated list, e.g. "verification, auth"). Empty/unset = no tags.
 send_sms() {
     local from=$1
     local to=$2
     local body=$3
     local with_callback=$4
+    local tags=$5
 
-    local callback_args=()
+    local extra_args=()
     if [ "$with_callback" = "true" ]; then
-        callback_args=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
+        extra_args+=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
+    fi
+    if [ -n "$tags" ]; then
+        extra_args+=(-H "X-Tags: ${tags}")
     fi
 
     response=$(curl -s -X POST \
@@ -64,11 +69,13 @@ send_sms() {
         --data-urlencode "From=${from}" \
         --data-urlencode "To=${to}" \
         --data-urlencode "Body=${body}" \
-        "${callback_args[@]}")
+        "${extra_args[@]}")
 
     if echo "$response" | grep -q '"sid"'; then
         message_sid=$(echo "$response" | grep -o '"sid":"[^"]*"' | head -1 | cut -d'"' -f4)
-        echo -e "  ${GREEN}✓${NC} SMS: ${from} -> ${to} (${message_sid})"
+        local tag_note=""
+        [ -n "$tags" ] && tag_note=" [${tags}]"
+        echo -e "  ${GREEN}✓${NC} SMS: ${from} -> ${to} (${message_sid})${tag_note}"
         ((msg_success++))
     else
         echo -e "  ${RED}✗${NC} SMS: ${from} -> ${to} - Failed"
@@ -76,16 +83,20 @@ send_sms() {
     fi
 }
 
-# Function to make call
+# Function to make call. The 5th arg is an optional X-Tags value.
 make_call() {
     local from=$1
     local to=$2
     local twiml_url=$3
     local with_callback=$4
+    local tags=$5
 
-    local callback_args=()
+    local extra_args=()
     if [ "$with_callback" = "true" ]; then
-        callback_args=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
+        extra_args+=(--data-urlencode "StatusCallback=${CALLBACK_URL}")
+    fi
+    if [ -n "$tags" ]; then
+        extra_args+=(-H "X-Tags: ${tags}")
     fi
 
     response=$(curl -s -X POST \
@@ -94,11 +105,13 @@ make_call() {
         --data-urlencode "From=${from}" \
         --data-urlencode "To=${to}" \
         --data-urlencode "Url=${twiml_url}" \
-        "${callback_args[@]}")
+        "${extra_args[@]}")
 
     if echo "$response" | grep -q '"sid"'; then
         call_sid=$(echo "$response" | grep -o '"sid":"[^"]*"' | head -1 | cut -d'"' -f4)
-        echo -e "  ${GREEN}✓${NC} Call: ${from} -> ${to} (${call_sid})"
+        local tag_note=""
+        [ -n "$tags" ] && tag_note=" [${tags}]"
+        echo -e "  ${GREEN}✓${NC} Call: ${from} -> ${to} (${call_sid})${tag_note}"
         ((call_success++))
     else
         echo -e "  ${RED}✗${NC} Call: ${from} -> ${to} - Failed"
@@ -123,15 +136,15 @@ echo -e "${BLUE}--- Seeding Messages ---${NC}"
 
 # 1. Successful messages (to registered numbers)
 echo -e "${YELLOW}Creating successful messages...${NC}"
-send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Welcome to our service! Your account is now active." "true"
-send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Your verification code is: 123456" "true"
-send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "Your order #1001 has been shipped!" "true"
-send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Reminder: Your appointment is tomorrow at 2pm" "false"
-send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED" "Flash sale! 50% off all items today only." "true"
+send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Welcome to our service! Your account is now active." "true" "welcome"
+send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Your verification code is: 123456" "true" "verification, auth"
+send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "Your order #1001 has been shipped!" "true" "order"
+send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Reminder: Your appointment is tomorrow at 2pm" "false" "reminder"
+send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED" "Flash sale! 50% off all items today only." "true" "marketing"
 
 # 2. Failed messages (to failure numbers)
 echo -e "${YELLOW}Creating failed messages...${NC}"
-send_sms "${FROM_NUMBERS[0]}" "$TO_FAILURE" "This message will fail delivery" "true"
+send_sms "${FROM_NUMBERS[0]}" "$TO_FAILURE" "This message will fail delivery" "true" "verification"
 send_sms "${FROM_NUMBERS[1]}" "$TO_FAILURE" "Another failed message attempt" "true"
 
 # 3. Messages to unknown numbers (uses default_behavior)
@@ -141,12 +154,12 @@ send_sms "${FROM_NUMBERS[1]}" "+15556667777" "Testing unknown recipient" "false"
 
 # 4. Unicode/emoji messages
 echo -e "${YELLOW}Creating unicode messages...${NC}"
-send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Hello! 你好! مرحبا! 🎉" "true"
-send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "Payment received ✅ Amount: €50.00" "true"
+send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "Hello! 你好! مرحبا! 🎉" "true" "welcome"
+send_sms "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "Payment received ✅ Amount: €50.00" "true" "order, receipt"
 
 # 5. Long messages (multi-segment)
 echo -e "${YELLOW}Creating long messages...${NC}"
-send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "This is a long message that will span multiple SMS segments. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris." "true"
+send_sms "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "This is a long message that will span multiple SMS segments. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris." "true" "marketing"
 
 echo ""
 
@@ -157,19 +170,19 @@ echo -e "${BLUE}--- Seeding Calls ---${NC}"
 
 # 1. Successful calls (to registered numbers)
 echo -e "${YELLOW}Creating successful calls...${NC}"
-make_call "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "${TWIML_URLS[0]}" "true"
-make_call "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "${TWIML_URLS[1]}" "true"
-make_call "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "${TWIML_URLS[2]}" "false"
+make_call "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "${TWIML_URLS[0]}" "true" "welcome"
+make_call "${FROM_NUMBERS[1]}" "$TO_REGISTERED_2" "${TWIML_URLS[1]}" "true" "support"
+make_call "${FROM_NUMBERS[0]}" "$TO_REGISTERED" "${TWIML_URLS[2]}" "false" "voicemail"
 
 # 2. Failed calls (to failure numbers)
 echo -e "${YELLOW}Creating failed calls...${NC}"
-make_call "${FROM_NUMBERS[0]}" "$TO_FAILURE" "${TWIML_URLS[0]}" "true"
+make_call "${FROM_NUMBERS[0]}" "$TO_FAILURE" "${TWIML_URLS[0]}" "true" "support"
 make_call "${FROM_NUMBERS[1]}" "$TO_FAILURE" "${TWIML_URLS[1]}" "true"
 
 # 3. Calls to unknown numbers
 echo -e "${YELLOW}Creating calls to unknown numbers...${NC}"
 make_call "${FROM_NUMBERS[0]}" "$TO_UNKNOWN" "${TWIML_URLS[0]}" "true"
-make_call "${FROM_NUMBERS[1]}" "+15558889999" "${TWIML_URLS[2]}" "true"
+make_call "${FROM_NUMBERS[1]}" "+15558889999" "${TWIML_URLS[2]}" "true" "voicemail"
 
 echo ""
 
