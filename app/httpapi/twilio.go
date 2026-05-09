@@ -92,13 +92,10 @@ func (s *Server) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONBytes(w, http.StatusCreated, body)
 
-	// Schedule status flow AFTER response is written, with the
-	// effective callback URL (empty if globally disabled).
-	cbURL := req.StatusCallback
-	if !s.callbacksEnabled {
-		cbURL = ""
-	}
-	s.dispatcher.ScheduleSMSStatusFlow(sid, req.From, req.To, cbURL, isKnown, willSucceed)
+	// Schedule status flow AFTER response is written. The dispatcher
+	// short-circuits on isKnown=false, so empty number lists effectively
+	// mean "no callbacks" without an explicit gate.
+	s.dispatcher.ScheduleSMSStatusFlow(sid, req.From, req.To, req.StatusCallback, isKnown, willSucceed)
 }
 
 // MakeCall handles POST /2010-04-01/Accounts/{AccountSid}/Calls.json.
@@ -179,9 +176,5 @@ func (s *Server) MakeCall(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONBytes(w, http.StatusCreated, body)
 
-	cbURL := req.StatusCallback
-	if !s.callbacksEnabled {
-		cbURL = ""
-	}
-	s.dispatcher.ScheduleCallStatusFlow(sid, req.From, req.To, cbURL, isKnown, willSucceed)
+	s.dispatcher.ScheduleCallStatusFlow(sid, req.From, req.To, req.StatusCallback, isKnown, willSucceed)
 }

@@ -53,11 +53,9 @@ func newTestServer(t *testing.T, mutate ...func(*config.Twilio)) *testServer {
 			CheckFromNumbers:    true,
 			RequireParameters:   true,
 		},
-		DefaultBehavior:    "success",
-		RegisteredNumbers:  []string{registeredTo},
+		SuccessNumbers:     []string{registeredTo},
 		AllowedFromNumbers: []string{validFrom},
 		FailureNumbers:     []string{failureTo},
-		Callbacks:          config.Callbacks{Enabled: true},
 	}
 	for _, fn := range mutate {
 		fn(cfg)
@@ -73,13 +71,12 @@ func newTestServer(t *testing.T, mutate ...func(*config.Twilio)) *testServer {
 	disp := testutil.NewFakeDispatcher()
 
 	srv := NewServer(Deps{
-		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Provider:         twilio.New(cfg),
-		Store:            store,
-		Templates:        engine,
-		Dispatcher:       disp,
-		AccountSid:       cfg.AccountSid,
-		CallbacksEnabled: cfg.Callbacks.Enabled,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Provider:   twilio.New(cfg),
+		Store:      store,
+		Templates:  engine,
+		Dispatcher: disp,
+		AccountSid: cfg.AccountSid,
 	})
 	return &testServer{Server: srv, store: store, dispatcher: disp}
 }
@@ -210,24 +207,6 @@ func TestSendMessage_UnknownNumberSchedulesStayQueued(t *testing.T) {
 	require.Len(t, calls, 1)
 	assert.False(t, calls[0].IsKnown, "IsKnown = true; expected false for unknown number")
 	// WillSucceed value doesn't matter when IsKnown=false (dispatcher will short-circuit)
-}
-
-func TestSendMessage_CallbacksDisabledClearsURL(t *testing.T) {
-	ts := newTestServer(t, func(c *config.Twilio) {
-		c.Callbacks.Enabled = false
-	})
-	form := defaultSMSForm()
-	form.Set("StatusCallback", "http://app/cb")
-
-	rec := httptest.NewRecorder()
-	ts.SendMessage(rec, authedSMSRequest(form))
-
-	calls := ts.dispatcher.SMSCalls()
-	require.Len(t, calls, 1)
-	assert.Empty(t, calls[0].CallbackURL, "CallbackURL should be empty when callbacks globally disabled")
-	// Persisted record still has the original URL — Python behavior
-	rows, _, _ := ts.store.ListMessages(context.Background(), 10, 0)
-	assert.Equal(t, "http://app/cb", rows[0].CallbackURL, "persisted CallbackURL should retain user-supplied URL")
 }
 
 // --- error paths ---

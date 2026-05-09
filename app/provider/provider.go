@@ -9,12 +9,12 @@ import (
 
 // Provider is the interface implemented by carrier adapters (Twilio, etc.).
 //
-// IsKnownNumber and ShouldSucceed work together to preserve Python's effective
-// behavior: the dispatcher checks IsKnownNumber first; if false, no progression,
-// no callbacks. Only if true does it consult ShouldSucceed. This means the
-// `default_behavior` config field — which ShouldSucceed consults — is dead code
-// in practice today, matching the Python implementation. See the Task 4 / Task 7
-// notes in docs/plans/20260507-go-rewrite.md.
+// IsKnownNumber and ShouldSucceed work together: the dispatcher checks
+// IsKnownNumber first; if false, no progression, no callbacks. Only if true
+// does it consult ShouldSucceed to decide which terminal status to emit.
+// With both number lists empty, every number is unknown — nothing progresses
+// past `queued` and no callbacks fire. This is also how the server is
+// effectively "callbacks-disabled".
 type Provider interface {
 	// Name returns the provider identifier ("twilio") for routing template lookups.
 	Name() string
@@ -30,8 +30,8 @@ type Provider interface {
 	ValidateCall(req CallRequest) error
 
 	// IsKnownNumber reports whether the destination number is in the
-	// failure_numbers or registered_numbers list. Numbers not in either
-	// list cause the dispatcher to skip status progression.
+	// failure or success number list. Numbers not in either list cause
+	// the dispatcher to skip status progression.
 	IsKnownNumber(toNumber string) bool
 
 	// ShouldSucceed returns true if the destination should produce a

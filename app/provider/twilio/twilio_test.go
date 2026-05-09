@@ -36,8 +36,7 @@ func baseConfig() *config.Twilio {
 			CheckFromNumbers:    true,
 			RequireParameters:   true,
 		},
-		DefaultBehavior:    "success",
-		RegisteredNumbers:  []string{validRegistered, validRegistered2},
+		SuccessNumbers:     []string{validRegistered, validRegistered2},
 		AllowedFromNumbers: []string{validFrom1, validFrom2},
 		FailureNumbers:     []string{validFailure},
 	}
@@ -163,7 +162,7 @@ func TestValidatePhoneFormat_validCountryCodes(t *testing.T) {
 	cases := []provider.SMSRequest{
 		{From: "+12025551234", To: "+12025550100", Body: "us"},
 		// US numbers are sufficient for round-trip; the goal is to confirm
-		// libphonenumber is doing the validation, not the registered_numbers list.
+		// libphonenumber is doing the validation, not the success_numbers list.
 	}
 	for _, req := range cases {
 		// Note: From-allowlist still enforced. Use a number in allowedFrom.
@@ -266,11 +265,11 @@ func TestIsKnownNumber(t *testing.T) {
 		num  string
 		want bool
 	}{
-		{validFailure, true},          // failure list
-		{validRegistered, true},       // registered list
-		{validRegistered2, true},      // registered list (second)
-		{validUnknown, false},         // valid format, in neither list
-		{validNotAllowedFrom, false},  // valid format, not in registered/failure (it's a "From not in allowlist")
+		{validFailure, true},         // failure list
+		{validRegistered, true},      // success list
+		{validRegistered2, true},     // success list (second)
+		{validUnknown, false},        // valid format, in neither list
+		{validNotAllowedFrom, false}, // valid format, not in success/failure (it's a "From not in allowlist")
 		{"", false},
 	}
 	for _, tc := range cases {
@@ -278,39 +277,35 @@ func TestIsKnownNumber(t *testing.T) {
 	}
 }
 
-func TestIsKnownNumber_independentOfDefaultBehavior(t *testing.T) {
+func TestIsKnownNumber_emptyLists(t *testing.T) {
 	cfg := baseConfig()
-	cfg.DefaultBehavior = "failure"
+	cfg.SuccessNumbers = nil
+	cfg.FailureNumbers = nil
 	p := New(cfg)
-	assert.False(t, p.IsKnownNumber("+12025557777"), "unknown number should be false even with default_behavior=failure")
+	// With both lists empty, every number is unknown — this is the new
+	// "callbacks effectively disabled" mode.
+	for _, num := range []string{validRegistered, validFailure, validUnknown, ""} {
+		assert.False(t, p.IsKnownNumber(num), "IsKnownNumber(%q) with empty lists", num)
+	}
 }
 
-func TestShouldSucceed_failureListBeatsRegistered(t *testing.T) {
+func TestShouldSucceed_failureListBeatsSuccess(t *testing.T) {
 	cfg := baseConfig()
-	cfg.RegisteredNumbers = []string{"+12025550100"}
+	cfg.SuccessNumbers = []string{"+12025550100"}
 	cfg.FailureNumbers = []string{"+12025550100"} // contradictory but failure wins
 	p := New(cfg)
-	assert.False(t, p.ShouldSucceed("+12025550100"), "failure list must take precedence over registered")
+	assert.False(t, p.ShouldSucceed("+12025550100"), "failure list must take precedence over success")
 }
 
-func TestShouldSucceed_registeredOverDefault(t *testing.T) {
-	cfg := baseConfig()
-	cfg.DefaultBehavior = "failure" // would say false for unknown
-	p := New(cfg)
-	assert.True(t, p.ShouldSucceed("+12025550100"), "registered number should succeed")
+func TestShouldSucceed_successNumber(t *testing.T) {
+	p := New(baseConfig())
+	assert.True(t, p.ShouldSucceed(validRegistered), "success-listed number must return true")
+	assert.True(t, p.ShouldSucceed(validRegistered2), "success-listed number must return true")
 }
 
-func TestShouldSucceed_defaultBehaviorBranch(t *testing.T) {
-	// Note: this branch is observably unreachable because the dispatcher
-	// short-circuits on !IsKnownNumber, but we still test it directly to
-	// document the implementation's intent.
-	cfg := baseConfig()
-	p := New(cfg)
-	assert.True(t, p.ShouldSucceed("+12025557777"), "default_behavior=success should make unknown number succeed")
-
-	cfg.DefaultBehavior = "failure"
-	p = New(cfg)
-	assert.False(t, p.ShouldSucceed("+12025557777"), "default_behavior=failure should make unknown number fail")
+func TestShouldSucceed_failureNumber(t *testing.T) {
+	p := New(baseConfig())
+	assert.False(t, p.ShouldSucceed(validFailure), "failure-listed number must return false")
 }
 
 // --- Misc ---

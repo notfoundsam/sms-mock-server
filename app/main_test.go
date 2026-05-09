@@ -17,9 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// smokeTestConfig returns a config matching the project config.yaml shape
-// with overrides for testing: in-memory DB, no callback delays, allowed
-// numbers from the project's defaults.
+// smokeTestConfig returns a config for the smoke test: in-memory DB, no
+// callback delays, allowed/success/failure numbers in the test data set.
 func smokeTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
@@ -35,12 +34,10 @@ func smokeTestConfig(t *testing.T) *config.Config {
 				CheckFromNumbers:    true,
 				RequireParameters:   true,
 			},
-			DefaultBehavior:    "success",
-			RegisteredNumbers:  []string{"+12025550100"},
+			SuccessNumbers:     []string{"+12025550100"},
 			AllowedFromNumbers: []string{"+12025551234"},
 			FailureNumbers:     []string{"+12025550199"},
 			Callbacks: config.Callbacks{
-				Enabled:           false,
 				DelaySeconds:      0,
 				RetryAttempts:     1,
 				RetryDelaySeconds: 0,

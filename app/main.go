@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -31,12 +30,9 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "", "path to config.yaml (defaults to $CONFIG_PATH or ./config.yaml)")
-	flag.Parse()
-
 	logger := newLogger()
 
-	if err := run(*configPath, logger); err != nil {
+	if err := run(logger); err != nil {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
 	}
@@ -114,13 +110,12 @@ func buildStack(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	}, cfg.Twilio.AccountSid)
 
 	apiServer := httpapi.NewServer(httpapi.Deps{
-		Logger:           logger,
-		Provider:         prov,
-		Store:            store,
-		Templates:        engine,
-		Dispatcher:       dispatcher,
-		AccountSid:       cfg.Twilio.AccountSid,
-		CallbacksEnabled: cfg.Twilio.Callbacks.Enabled,
+		Logger:     logger,
+		Provider:   prov,
+		Store:      store,
+		Templates:  engine,
+		Dispatcher: dispatcher,
+		AccountSid: cfg.Twilio.AccountSid,
 	})
 	uiHandler := ui.New(logger, store, engine, prov.Name(), cfg.Server.Timezone)
 
@@ -140,8 +135,8 @@ func buildStack(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	return &stack{store: store, dispatcher: dispatcher, handler: handler}, nil
 }
 
-func run(configPath string, logger *slog.Logger) error {
-	cfg, err := config.Load(configPath)
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

@@ -19,16 +19,16 @@ type Provider struct {
 	// Pre-built sets for O(1) membership checks; the lists in config are
 	// expected to be small (handful to dozens), but maps make the intent clear
 	// and keep IsKnownNumber from doing repeated O(N) scans on hot paths.
-	registered    map[string]struct{}
-	allowedFrom   map[string]struct{}
-	failureNums   map[string]struct{}
+	successNums map[string]struct{}
+	allowedFrom map[string]struct{}
+	failureNums map[string]struct{}
 }
 
 // New returns a Twilio provider for the given config.
 func New(cfg *config.Twilio) *Provider {
 	return &Provider{
 		cfg:         cfg,
-		registered:  toSet(cfg.RegisteredNumbers),
+		successNums: toSet(cfg.SuccessNumbers),
 		allowedFrom: toSet(cfg.AllowedFromNumbers),
 		failureNums: toSet(cfg.FailureNumbers),
 	}
@@ -140,26 +140,25 @@ func (p *Provider) validateFromAllowlist(from string) error {
 	return nil
 }
 
-// IsKnownNumber: To is in failure_numbers OR registered_numbers.
+// IsKnownNumber: To is in failure_numbers OR success_numbers. When both lists
+// are empty, every number is unknown — the dispatcher will not progress the
+// status flow and no callbacks fire.
 func (p *Provider) IsKnownNumber(to string) bool {
 	if _, ok := p.failureNums[to]; ok {
 		return true
 	}
-	_, ok := p.registered[to]
+	_, ok := p.successNums[to]
 	return ok
 }
 
-// ShouldSucceed: failure_numbers → false; registered_numbers → true; else default_behavior.
-// The else branch is observably unreachable in practice because the dispatcher
-// short-circuits on !IsKnownNumber. We keep it to match Python's stated logic.
+// ShouldSucceed: failure_numbers → false; otherwise true (success_numbers).
+// Only meaningful when IsKnownNumber returns true; the dispatcher short-circuits
+// before calling this for unknown numbers.
 func (p *Provider) ShouldSucceed(to string) bool {
 	if _, ok := p.failureNums[to]; ok {
 		return false
 	}
-	if _, ok := p.registered[to]; ok {
-		return true
-	}
-	return p.cfg.DefaultBehavior == "success"
+	return true
 }
 
 // --- Basic auth parsing ---
