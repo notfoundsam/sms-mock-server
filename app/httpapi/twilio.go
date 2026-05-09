@@ -62,6 +62,15 @@ func (s *Server) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Attach user-defined tags from the X-Tags header (out-of-band metadata
+	// for the UI; ignored by the Twilio API surface itself). Tagging failure
+	// is logged but does not fail the request.
+	if tags := parseTagsHeader(r.Header.Get("X-Tags")); len(tags) > 0 {
+		if err := s.store.SetMessageTags(r.Context(), msg.ID, tags); err != nil {
+			s.logger.Warn("SetMessageTags failed", "sid", sid, "error", err)
+		}
+	}
+
 	body, err := s.tmpl.RenderSMSResponse(tmpl.SMSResponseData{
 		MessageSID: sid,
 		AccountSid: s.accountSid,
@@ -141,6 +150,12 @@ func (s *Server) MakeCall(w http.ResponseWriter, r *http.Request) {
 		writeJSONString(w, http.StatusInternalServerError,
 			`{"code":500,"message":"storage error","status":500}`)
 		return
+	}
+
+	if tags := parseTagsHeader(r.Header.Get("X-Tags")); len(tags) > 0 {
+		if err := s.store.SetCallTags(r.Context(), call.ID, tags); err != nil {
+			s.logger.Warn("SetCallTags failed", "sid", sid, "error", err)
+		}
 	}
 
 	body, err := s.tmpl.RenderCallResponse(tmpl.CallResponseData{
