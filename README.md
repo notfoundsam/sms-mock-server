@@ -2,6 +2,8 @@
 
 A mock server for Twilio SMS and Call APIs, perfect for development and testing without sending real messages or making real calls.
 
+![SMS Mock UI](docs/images/screenshot.png)
+
 ## Features
 
 - **Twilio-compatible API** - Drop-in replacement for Twilio SMS/Call APIs
