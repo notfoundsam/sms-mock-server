@@ -1,6 +1,20 @@
-{{define "title"}}Messages - SMS Mock Server{{end}}
-{{define "content"}}
-<h2 style="margin-bottom: 20px;">All Messages</h2>
-{{template "fragments/messages_table.html" .}}
+{{define "title"}}Messages · SMS Mock{{end}}
+
+{{define "topbar_search"}}
+<form class="topbar-search" action="/" method="GET"
+      hx-get="/ui/fragments/list" hx-target="#record-list" hx-swap="outerHTML"
+      hx-trigger="keyup changed delay:300ms from:input[name='q'], submit"
+      hx-include="this">
+    <input type="hidden" name="type" value="messages">
+    <input type="hidden" name="status" value="{{ .Status }}">
+    <input type="search" name="q" value="{{ .Q }}" placeholder="Search from / to / body..." autocomplete="off">
+</form>
 {{end}}
-{{template "base" .}}
+
+{{define "sidebar"}}
+{{template "fragments/sidebar.html" .}}
+{{end}}
+
+{{define "content"}}
+{{template "fragments/list.html" .}}
+{{end}}

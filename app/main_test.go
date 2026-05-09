@@ -90,13 +90,13 @@ func TestSmoke_EndToEnd(t *testing.T) {
 	// 3. /health now reports 1 message
 	checkHealth(t, srv.URL, 1)
 
-	// 4. Dashboard renders with the message visible
+	// 4. Inbox renders with the message visible
 	resp, err = http.Get(srv.URL + "/")
 	require.NoError(t, err, "GET /")
 	dashBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	assert.Contains(t, string(dashBody), "Dashboard", "dashboard missing expected content")
-	assert.Contains(t, string(dashBody), "&#43;12025551234", "dashboard missing recent-message phone (HTML-escaped)")
+	assert.Contains(t, string(dashBody), "Messages · SMS Mock", "inbox title missing")
+	assert.Contains(t, string(dashBody), "&#43;12025551234", "inbox missing message phone (HTML-escaped)")
 
 	// 5. Static asset is served from embedded FS
 	resp, err = http.Get(srv.URL + "/static/css/style.css")

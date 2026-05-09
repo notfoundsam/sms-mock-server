@@ -1,23 +1,23 @@
-// Package ui registers the HTML/HTMX UI routes (dashboard, list pages,
-// fragment endpoints) on the supplied http.ServeMux. Templates are rendered
-// by template.Engine using the storage.Store as the data source.
+// Package ui registers the HTML/HTMX UI routes (mailbox-style inbox) on the
+// supplied http.ServeMux. Templates are rendered by template.Engine using
+// the storage.Store as the data source.
 package ui
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/notfoundsam/sms-mock-server/app/storage"
 	tmpl "github.com/notfoundsam/sms-mock-server/app/template"
 )
 
-const (
-	itemsPerPage    = 50
-	recentItemCount = 10
-)
+const itemsPerPage = 50
 
 // Handler holds dependencies for UI routes. Build via New, then call Register
 // on a ServeMux.
@@ -37,329 +37,421 @@ func New(logger *slog.Logger, store storage.Store, engine *tmpl.Engine, provider
 	return &Handler{logger: logger, store: store, tmpl: engine, provider: providerName, timezone: timezone}
 }
 
-// Register attaches all UI routes (page + fragment) to mux.
+// Register attaches all UI routes to mux.
 func (h *Handler) Register(mux *http.ServeMux) {
-	// "/{$}" matches exactly "/" (Go 1.22 mux syntax). Without {$}, "GET /"
-	// is a sub-tree match that catches every unmatched GET, which would
-	// suppress 405-not-allowed responses for paths registered with other methods.
-	mux.HandleFunc("GET /{$}", h.dashboard)
-	mux.HandleFunc("GET /ui/messages", h.messagesPage)
-	mux.HandleFunc("GET /ui/calls", h.callsPage)
-	mux.HandleFunc("GET /ui/callbacks", h.callbacksPage)
+	// Page routes. "/{$}" matches exactly "/" (Go 1.22 mux syntax).
+	mux.HandleFunc("GET /{$}", h.messagesPage)
+	mux.HandleFunc("GET /calls", h.callsPage)
 
-	mux.HandleFunc("GET /ui/fragments/stats", h.statsFragment)
-	mux.HandleFunc("GET /ui/fragments/recent-messages", h.recentMessagesFragment)
-	mux.HandleFunc("GET /ui/fragments/recent-calls", h.recentCallsFragment)
-	mux.HandleFunc("GET /ui/fragments/messages-table", h.messagesTableFragment)
-	mux.HandleFunc("GET /ui/fragments/calls-table", h.callsTableFragment)
-	mux.HandleFunc("GET /ui/fragments/callbacks-table", h.callbacksTableFragment)
-	mux.HandleFunc("GET /ui/fragments/message/{message_sid}", h.messageDetailFragment)
-	mux.HandleFunc("GET /ui/fragments/call/{call_sid}", h.callDetailFragment)
-	mux.HandleFunc("GET /ui/fragments/callback-detail/{callback_id}", h.callbackDetailFragment)
+	// Detail (full-page) routes.
+	mux.HandleFunc("GET /view/messages/{message_sid}", h.messageDetail)
+	mux.HandleFunc("GET /view/calls/{call_sid}", h.callDetail)
+
+	// Fragment routes (HTMX polling targets).
+	mux.HandleFunc("GET /ui/fragments/list", h.listFragment)
+	mux.HandleFunc("GET /ui/fragments/sidebar", h.sidebarFragment)
+
+	// Per-record delete (bulk delete uses the existing /clear/* API endpoints).
+	mux.HandleFunc("DELETE /ui/messages/{message_sid}", h.deleteMessage)
+	mux.HandleFunc("DELETE /ui/calls/{call_sid}", h.deleteCall)
 }
 
-// --- shared data ---
+// --- shared types ---
 
-// pageData is base data passed to every page (top-level UI route). Fragment
-// data structs embed nothing — fragments don't need provider/timezone since
-// they don't use base.html.
+// pageData is the base shape passed to every page template. It includes the
+// data the sidebar and list need, so the first paint is server-rendered (no
+// HTMX hydration flash).
 type pageData struct {
-	Provider string
-	Timezone string
-	Path     string // for active-tab highlighting in nav
+	Provider    string
+	Timezone    string
+	Type        string // "messages" or "calls" — drives sidebar active state
+	Q           string // current search query (raw, may include tag:foo tokens)
+	Status      string // current status filter (URL-only, no UI today)
+	Query       Query  // parsed Q — exposes .Text and .HasTag for template use
+	Page        int
+	TotalPages  int
+	Total       int
+	Messages    []storage.Message // non-nil when Type=="messages"
+	Calls       []storage.Call    // non-nil when Type=="calls"
+	TagNames    []string          // all tag names attached to any record (sidebar)
+	ActiveCount int               // total for the active type (sidebar nav badge)
+	OtherCount  int               // total for the OTHER type (sidebar nav badge)
 }
 
-func (h *Handler) base(r *http.Request) pageData {
-	return pageData{Provider: h.provider, Timezone: h.timezone, Path: r.URL.Path}
+// listFragmentData feeds fragments/list.html.
+type listFragmentData struct {
+	Type       string
+	Q          string
+	Status     string // legacy URL-only filter, still threaded through pagination links
+	Page       int
+	TotalPages int
+	Total      int
+	Messages   []storage.Message
+	Calls      []storage.Call
+}
+
+// sidebarFragmentData feeds fragments/sidebar.html.
+type sidebarFragmentData struct {
+	Type        string
+	Q           string
+	Query       Query
+	TagNames    []string
+	ActiveCount int
+	OtherCount  int
+}
+
+// detailData feeds view/message.html and view/call.html. The Q/Status/sidebar
+// fields mirror pageData so the same fragments/sidebar.html template renders
+// here, and the Back link can rebuild the inbox URL with filters preserved.
+type detailData struct {
+	Provider        string
+	Timezone        string
+	Type            string           // "messages" or "calls"
+	Message         *storage.Message // populated when Type=="messages"
+	Call            *storage.Call    // populated when Type=="calls"
+	RawJSON         string
+	CallbackSummary storage.CallbackSummary
+	RecordTags      []string // tags attached to this specific record
+
+	// Filter state carried through from the inbox URL so the Back link
+	// preserves it and the sidebar Tags section highlights correctly.
+	Q           string
+	Status      string
+	Query       Query
+	TagNames    []string
+	ActiveCount int
+	OtherCount  int
+}
+
+// BackURL renders the Back-to-inbox URL with q/status preserved.
+func (d detailData) BackURL() string {
+	base := "/"
+	if d.Type == "calls" {
+		base = "/calls"
+	}
+	parts := []string{}
+	if d.Q != "" {
+		parts = append(parts, "q="+url.QueryEscape(d.Q))
+	}
+	if d.Status != "" {
+		parts = append(parts, "status="+url.QueryEscape(d.Status))
+	}
+	if len(parts) == 0 {
+		return base
+	}
+	return base + "?" + strings.Join(parts, "&")
+}
+
+// sidebarBundle is the data every page + detail view needs to render the
+// sidebar: the global tag list plus inbox totals for each type.
+type sidebarBundle struct {
+	TagNames    []string
+	ActiveCount int
+	OtherCount  int
+}
+
+// loadSidebar fetches the sidebar payload for the given active type
+// ("messages" or "calls"). ActiveCount is the total for typ; OtherCount is
+// the total for the other type. TagNames is the global list of tags used by
+// at least one record (sorted asc), or nil if no records are tagged.
+func (h *Handler) loadSidebar(r *http.Request, typ string) (sidebarBundle, error) {
+	var sb sidebarBundle
+	_, msgTotal, err := h.store.ListMessages(r.Context(), 1, 0)
+	if err != nil {
+		return sb, fmt.Errorf("list messages count: %w", err)
+	}
+	_, callTotal, err := h.store.ListCalls(r.Context(), 1, 0)
+	if err != nil {
+		return sb, fmt.Errorf("list calls count: %w", err)
+	}
+	names, err := h.store.ListTagNames(r.Context(), typ)
+	if err != nil {
+		return sb, fmt.Errorf("list tag names: %w", err)
+	}
+	sb.TagNames = names
+	if typ == "calls" {
+		sb.ActiveCount = callTotal
+		sb.OtherCount = msgTotal
+	} else {
+		sb.ActiveCount = msgTotal
+		sb.OtherCount = callTotal
+	}
+	return sb, nil
 }
 
 // --- pages ---
 
-type dashboardData struct {
-	pageData
-	Stats          storage.Stats
-	RecentMessages []storage.Message
-	RecentCalls    []storage.Call
-}
-
-func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.store.Stats(r.Context())
-	if err != nil {
-		h.serverError(w, "Stats", err)
-		return
-	}
-	recentMessages, _, err := h.store.ListMessages(r.Context(), recentItemCount, 0)
-	if err != nil {
-		h.serverError(w, "ListMessages", err)
-		return
-	}
-	recentCalls, _, err := h.store.ListCalls(r.Context(), recentItemCount, 0)
-	if err != nil {
-		h.serverError(w, "ListCalls", err)
-		return
-	}
-	h.renderUI(w, "dashboard.html", dashboardData{
-		pageData: h.base(r), Stats: stats,
-		RecentMessages: recentMessages, RecentCalls: recentCalls,
-	})
-}
-
-type messagesPageData struct {
-	pageData
-	Messages   []storage.Message
-	Page       int
-	TotalPages int
-}
-
+//nolint:dupl // structurally mirrors callsPage but reads a different store table
 func (h *Handler) messagesPage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	status := r.URL.Query().Get("status")
+	parsed := ParseQuery(q)
 	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListMessages(r.Context(), itemsPerPage, offset)
+
+	rows, total, err := h.store.SearchMessages(r.Context(), parsed.Text, status, parsed.Tags, itemsPerPage, offset)
 	if err != nil {
-		h.serverError(w, "ListMessages", err)
+		h.serverError(w, "SearchMessages", err)
 		return
 	}
-	h.renderUI(w, "messages.html", messagesPageData{
-		pageData: h.base(r), Messages: rows,
-		Page: page, TotalPages: totalPages(total),
+	sb, err := h.loadSidebar(r, "messages")
+	if err != nil {
+		h.serverError(w, "loadSidebar", err)
+		return
+	}
+
+	h.renderUI(w, "messages.html", pageData{
+		Provider:    h.provider,
+		Timezone:    h.timezone,
+		Type:        "messages",
+		Q:           q,
+		Status:      status,
+		Query:       parsed,
+		Page:        page,
+		TotalPages:  totalPages(total),
+		Total:       total,
+		Messages:    rows,
+		TagNames:    sb.TagNames,
+		ActiveCount: sb.ActiveCount,
+		OtherCount:  sb.OtherCount,
 	})
 }
 
-type callsPageData struct {
-	pageData
-	Calls      []storage.Call
-	Page       int
-	TotalPages int
-}
-
+//nolint:dupl // structurally mirrors messagesPage but reads a different store table
 func (h *Handler) callsPage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	status := r.URL.Query().Get("status")
+	parsed := ParseQuery(q)
 	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListCalls(r.Context(), itemsPerPage, offset)
+
+	rows, total, err := h.store.SearchCalls(r.Context(), parsed.Text, status, parsed.Tags, itemsPerPage, offset)
 	if err != nil {
-		h.serverError(w, "ListCalls", err)
+		h.serverError(w, "SearchCalls", err)
 		return
 	}
-	h.renderUI(w, "calls.html", callsPageData{
-		pageData: h.base(r), Calls: rows,
-		Page: page, TotalPages: totalPages(total),
+	sb, err := h.loadSidebar(r, "calls")
+	if err != nil {
+		h.serverError(w, "loadSidebar", err)
+		return
+	}
+
+	h.renderUI(w, "calls.html", pageData{
+		Provider:    h.provider,
+		Timezone:    h.timezone,
+		Type:        "calls",
+		Q:           q,
+		Status:      status,
+		Query:       parsed,
+		Page:        page,
+		TotalPages:  totalPages(total),
+		Total:       total,
+		Calls:       rows,
+		TagNames:    sb.TagNames,
+		ActiveCount: sb.ActiveCount,
+		OtherCount:  sb.OtherCount,
 	})
 }
 
-type callbacksPageData struct {
-	pageData
-	Callbacks  []callbackRow
-	Page       int
-	TotalPages int
-}
+// --- detail pages ---
 
-func (h *Handler) callbacksPage(w http.ResponseWriter, r *http.Request) {
-	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListCallbackLogs(r.Context(), itemsPerPage, offset)
-	if err != nil {
-		h.serverError(w, "ListCallbackLogs", err)
-		return
-	}
-	h.renderUI(w, "callbacks.html", callbacksPageData{
-		pageData: h.base(r), Callbacks: enrichCallbacks(rows),
-		Page: page, TotalPages: totalPages(total),
-	})
-}
-
-// --- fragments ---
-
-type statsFragmentData struct {
-	Stats storage.Stats
-}
-
-func (h *Handler) statsFragment(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.store.Stats(r.Context())
-	if err != nil {
-		h.serverError(w, "Stats", err)
-		return
-	}
-	h.renderUI(w, "fragments/stats.html", statsFragmentData{Stats: stats})
-}
-
-type recentMessagesData struct {
-	RecentMessages []storage.Message
-}
-
-func (h *Handler) recentMessagesFragment(w http.ResponseWriter, r *http.Request) {
-	rows, _, err := h.store.ListMessages(r.Context(), recentItemCount, 0)
-	if err != nil {
-		h.serverError(w, "ListMessages", err)
-		return
-	}
-	h.renderUI(w, "fragments/recent_messages.html", recentMessagesData{RecentMessages: rows})
-}
-
-type recentCallsData struct {
-	RecentCalls []storage.Call
-}
-
-func (h *Handler) recentCallsFragment(w http.ResponseWriter, r *http.Request) {
-	rows, _, err := h.store.ListCalls(r.Context(), recentItemCount, 0)
-	if err != nil {
-		h.serverError(w, "ListCalls", err)
-		return
-	}
-	h.renderUI(w, "fragments/recent_calls.html", recentCallsData{RecentCalls: rows})
-}
-
-type messagesTableData struct {
-	Messages   []storage.Message
-	Page       int
-	TotalPages int
-}
-
-func (h *Handler) messagesTableFragment(w http.ResponseWriter, r *http.Request) {
-	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListMessages(r.Context(), itemsPerPage, offset)
-	if err != nil {
-		h.serverError(w, "ListMessages", err)
-		return
-	}
-	h.renderUI(w, "fragments/messages_table.html", messagesTableData{
-		Messages: rows, Page: page, TotalPages: totalPages(total),
-	})
-}
-
-type callsTableData struct {
-	Calls      []storage.Call
-	Page       int
-	TotalPages int
-}
-
-func (h *Handler) callsTableFragment(w http.ResponseWriter, r *http.Request) {
-	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListCalls(r.Context(), itemsPerPage, offset)
-	if err != nil {
-		h.serverError(w, "ListCalls", err)
-		return
-	}
-	h.renderUI(w, "fragments/calls_table.html", callsTableData{
-		Calls: rows, Page: page, TotalPages: totalPages(total),
-	})
-}
-
-type callbacksTableData struct {
-	Callbacks  []callbackRow
-	Page       int
-	TotalPages int
-}
-
-func (h *Handler) callbacksTableFragment(w http.ResponseWriter, r *http.Request) {
-	page, offset := pageOffset(r)
-	rows, total, err := h.store.ListCallbackLogs(r.Context(), itemsPerPage, offset)
-	if err != nil {
-		h.serverError(w, "ListCallbackLogs", err)
-		return
-	}
-	h.renderUI(w, "fragments/callbacks_table.html", callbacksTableData{
-		Callbacks: enrichCallbacks(rows), Page: page, TotalPages: totalPages(total),
-	})
-}
-
-type messageDetailData struct {
-	Message *storage.Message
-}
-
-func (h *Handler) messageDetailFragment(w http.ResponseWriter, r *http.Request) {
+//nolint:dupl // structurally mirrors callDetail
+func (h *Handler) messageDetail(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("message_sid")
 	m, err := h.store.GetMessage(r.Context(), sid)
 	if errors.Is(err, storage.ErrNotFound) {
-		h.notFoundFragment(w, "Message not found")
+		h.notFoundPage(w, "Message not found")
 		return
 	}
 	if err != nil {
 		h.serverError(w, "GetMessage", err)
 		return
 	}
-	h.renderUI(w, "fragments/message_detail.html", messageDetailData{Message: m})
+	// Mark read after we know the record exists.
+	if markErr := h.store.MarkMessageRead(r.Context(), sid); markErr != nil {
+		h.logger.Warn("MarkMessageRead", "sid", sid, "error", markErr)
+	}
+	// Re-fetch so the rendered page reflects IsRead=true (purely cosmetic — the
+	// row in the list updates on the next poll regardless).
+	m.IsRead = true
+
+	summary, err := h.store.CallbackSummary(r.Context(), sid)
+	if err != nil {
+		h.logger.Warn("CallbackSummary", "sid", sid, "error", err)
+	}
+
+	recordTags, err := h.store.MessageTags(r.Context(), m.ID)
+	if err != nil {
+		h.logger.Warn("MessageTags", "sid", sid, "error", err)
+	}
+
+	sb, err := h.loadSidebar(r, "messages")
+	if err != nil {
+		h.serverError(w, "loadSidebar", err)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	raw, _ := json.MarshalIndent(m, "", "  ")
+	h.renderUI(w, "view/message.html", detailData{
+		Provider:        h.provider,
+		Timezone:        h.timezone,
+		Type:            "messages",
+		Message:         m,
+		RawJSON:         string(raw),
+		CallbackSummary: summary,
+		RecordTags:      recordTags,
+		Q:               q,
+		Status:          r.URL.Query().Get("status"),
+		Query:           ParseQuery(q),
+		TagNames:        sb.TagNames,
+		ActiveCount:     sb.ActiveCount,
+		OtherCount:      sb.OtherCount,
+	})
 }
 
-type callDetailData struct {
-	Call *storage.Call
-}
-
-func (h *Handler) callDetailFragment(w http.ResponseWriter, r *http.Request) {
+//nolint:dupl // structurally mirrors messageDetail
+func (h *Handler) callDetail(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("call_sid")
 	c, err := h.store.GetCall(r.Context(), sid)
 	if errors.Is(err, storage.ErrNotFound) {
-		h.notFoundFragment(w, "Call not found")
+		h.notFoundPage(w, "Call not found")
 		return
 	}
 	if err != nil {
 		h.serverError(w, "GetCall", err)
 		return
 	}
-	h.renderUI(w, "fragments/call_detail.html", callDetailData{Call: c})
+	if markErr := h.store.MarkCallRead(r.Context(), sid); markErr != nil {
+		h.logger.Warn("MarkCallRead", "sid", sid, "error", markErr)
+	}
+	c.IsRead = true
+
+	summary, err := h.store.CallbackSummary(r.Context(), sid)
+	if err != nil {
+		h.logger.Warn("CallbackSummary", "sid", sid, "error", err)
+	}
+
+	recordTags, err := h.store.CallTags(r.Context(), c.ID)
+	if err != nil {
+		h.logger.Warn("CallTags", "sid", sid, "error", err)
+	}
+
+	sb, err := h.loadSidebar(r, "calls")
+	if err != nil {
+		h.serverError(w, "loadSidebar", err)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	raw, _ := json.MarshalIndent(c, "", "  ")
+	h.renderUI(w, "view/call.html", detailData{
+		Provider:        h.provider,
+		Timezone:        h.timezone,
+		Type:            "calls",
+		Call:            c,
+		RawJSON:         string(raw),
+		CallbackSummary: summary,
+		RecordTags:      recordTags,
+		Q:               q,
+		Status:          r.URL.Query().Get("status"),
+		Query:           ParseQuery(q),
+		TagNames:        sb.TagNames,
+		ActiveCount:     sb.ActiveCount,
+		OtherCount:      sb.OtherCount,
+	})
 }
 
-func (h *Handler) callbackDetailFragment(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("callback_id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+// --- fragments ---
+
+func (h *Handler) listFragment(w http.ResponseWriter, r *http.Request) {
+	typ := normalizeType(r.URL.Query().Get("type"))
+	q := r.URL.Query().Get("q")
+	status := r.URL.Query().Get("status")
+	parsed := ParseQuery(q)
+	page, offset := pageOffset(r)
+
+	data := listFragmentData{Type: typ, Q: q, Status: status, Page: page}
+	switch typ {
+	case "messages":
+		rows, total, err := h.store.SearchMessages(r.Context(), parsed.Text, status, parsed.Tags, itemsPerPage, offset)
+		if err != nil {
+			h.serverError(w, "SearchMessages", err)
+			return
+		}
+		data.Messages = rows
+		data.Total = total
+		data.TotalPages = totalPages(total)
+	case "calls":
+		rows, total, err := h.store.SearchCalls(r.Context(), parsed.Text, status, parsed.Tags, itemsPerPage, offset)
+		if err != nil {
+			h.serverError(w, "SearchCalls", err)
+			return
+		}
+		data.Calls = rows
+		data.Total = total
+		data.TotalPages = totalPages(total)
+	}
+	h.renderUI(w, "fragments/list.html", data)
+}
+
+func (h *Handler) sidebarFragment(w http.ResponseWriter, r *http.Request) {
+	typ := normalizeType(r.URL.Query().Get("type"))
+	q := r.URL.Query().Get("q")
+	parsed := ParseQuery(q)
+
+	sb, err := h.loadSidebar(r, typ)
 	if err != nil {
-		h.notFoundFragment(w, "Callback not found")
+		h.serverError(w, "loadSidebar", err)
 		return
 	}
-	log, err := h.store.GetCallbackLog(r.Context(), id)
+	h.renderUI(w, "fragments/sidebar.html", sidebarFragmentData{
+		Type:        typ,
+		Q:           q,
+		Query:       parsed,
+		TagNames:    sb.TagNames,
+		ActiveCount: sb.ActiveCount,
+		OtherCount:  sb.OtherCount,
+	})
+}
+
+// --- delete ---
+
+func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("message_sid")
+	err := h.store.DeleteMessage(r.Context(), sid)
 	if errors.Is(err, storage.ErrNotFound) {
-		h.notFoundFragment(w, "Callback not found")
+		http.NotFound(w, r)
 		return
 	}
 	if err != nil {
-		h.serverError(w, "GetCallbackLog", err)
+		h.serverError(w, "DeleteMessage", err)
 		return
 	}
-	row := enrichCallback(log)
-	h.renderUI(w, "fragments/callback_detail.html", row)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) deleteCall(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("call_sid")
+	err := h.store.DeleteCall(r.Context(), sid)
+	if errors.Is(err, storage.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		h.serverError(w, "DeleteCall", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- helpers ---
 
-// callbackRow is the enriched view of a CallbackLog: the original log plus
-// the parsed status fields from its JSON payload (mirrors `app/ui.py:63-85`).
-type callbackRow struct {
-	Log           *storage.CallbackLog
-	MessageSID    string
-	CallSID       string
-	MessageStatus string
-	CallStatus    string
-}
-
-// enrichCallbacks converts a slice of CallbackLogs to enriched rows.
-func enrichCallbacks(logs []storage.CallbackLog) []callbackRow {
-	out := make([]callbackRow, len(logs))
-	for i := range logs {
-		out[i] = enrichCallback(&logs[i])
+// normalizeType clamps the ?type= query parameter to "messages" or "calls",
+// defaulting to "messages".
+func normalizeType(t string) string {
+	if t == "calls" {
+		return "calls"
 	}
-	return out
-}
-
-// enrichCallback extracts MessageSid, CallSid, MessageStatus, CallStatus from
-// the log's JSON payload. Silently leaves fields empty on parse failure.
-func enrichCallback(log *storage.CallbackLog) callbackRow {
-	row := callbackRow{Log: log}
-	if log.Payload == "" {
-		return row
-	}
-	var p map[string]any
-	if err := json.Unmarshal([]byte(log.Payload), &p); err != nil {
-		return row
-	}
-	if v, ok := p["MessageSid"].(string); ok {
-		row.MessageSID = v
-	}
-	if v, ok := p["CallSid"].(string); ok {
-		row.CallSID = v
-	}
-	if v, ok := p["MessageStatus"].(string); ok {
-		row.MessageStatus = v
-	}
-	if v, ok := p["CallStatus"].(string); ok {
-		row.CallStatus = v
-	}
-	return row
+	return "messages"
 }
 
 // pageOffset parses ?page=N from the query string. Clamps to ≥1; returns
@@ -396,8 +488,8 @@ func (h *Handler) serverError(w http.ResponseWriter, op string, err error) {
 	_, _ = w.Write([]byte("<p>Internal server error</p>"))
 }
 
-func (h *Handler) notFoundFragment(w http.ResponseWriter, msg string) {
+func (h *Handler) notFoundPage(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	_, _ = w.Write([]byte(`<div class='modal-body'><p>` + msg + `</p></div>`))
+	_, _ = w.Write([]byte("<!DOCTYPE html><html><body><h1>404</h1><p>" + msg + "</p><p><a href='/'>Back to inbox</a></p></body></html>"))
 }
