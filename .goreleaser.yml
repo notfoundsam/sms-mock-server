@@ -24,7 +24,6 @@ archives:
     files:
       - LICENSE*
       - README.md
-      - config.yaml
 
 # Docker image push to Docker Hub.
 # Auth comes from DOCKERHUB_USERNAME + DOCKERHUB_TOKEN repo secrets;
@@ -35,8 +34,7 @@ dockers:
     goos: linux
     goarch: amd64
     use: buildx
-    extra_files:
-      - config.yaml
+    dockerfile: Dockerfile.release
     build_flag_templates:
       - --platform=linux/amd64
     image_templates:
@@ -46,8 +44,7 @@ dockers:
     goos: linux
     goarch: arm64
     use: buildx
-    extra_files:
-      - config.yaml
+    dockerfile: Dockerfile.release
     build_flag_templates:
       - --platform=linux/arm64
     image_templates:

@@ -1,15 +1,24 @@
-# Release image used by goreleaser. The binary is built outside this
-# Dockerfile (per-arch) and placed in the build context alongside config.yaml.
+# Dockerfile used by `docker compose up --build` for local development.
+# Compiles the binary from source and runs it on distroless/static.
 #
-# For local dev, run the Go binary directly via `make run` — no Docker build
-# is needed. To produce a local image for testing, use:
-#   goreleaser release --snapshot --clean
+# For release images, see Dockerfile.release — it expects a pre-built binary
+# in the build context and is what goreleaser uses.
+
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sms-mock-server ./app
+
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 
-COPY sms-mock-server /app/sms-mock-server
-COPY --chown=nonroot:nonroot config.yaml /app/config.yaml
+COPY --from=builder /out/sms-mock-server /app/sms-mock-server
 
 EXPOSE 8080
 
@@ -18,4 +27,3 @@ ENV LOG_LEVEL=INFO
 USER nonroot:nonroot
 
 ENTRYPOINT ["/app/sms-mock-server"]
-CMD ["-config", "/app/config.yaml"]

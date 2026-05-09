@@ -1,0 +1,20 @@
+# Release image used by goreleaser. The binary is built outside this
+# Dockerfile (per-arch) by goreleaser's `builds:` block and placed in the
+# build context. Configuration is supplied entirely via SMS_MOCK_*
+# environment variables — see README.md.
+#
+# For local development, use the top-level Dockerfile (which compiles from
+# source) or `make run` on the host.
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /app
+
+COPY sms-mock-server /app/sms-mock-server
+
+EXPOSE 8080
+
+ENV LOG_LEVEL=INFO
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/app/sms-mock-server"]
