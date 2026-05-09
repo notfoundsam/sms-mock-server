@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -561,4 +563,215 @@ func TestTags_DeleteMessageCascades(t *testing.T) {
 	// so the messages-scoped ListTagNames excludes it.
 	names, _ := s.ListTagNames(ctx, "messages")
 	assert.Empty(t, names, "orphan tag should not appear in ListTagNames")
+}
+
+// --- pruning ---
+
+// seedMessagesAt inserts n messages with monotonically increasing created_at
+// (oldest first). Returns the SIDs in insertion order.
+func seedMessagesAt(t *testing.T, s Store, n int, base time.Time) []string {
+	t.Helper()
+	ctx := context.Background()
+	sids := make([]string, n)
+	for i := 0; i < n; i++ {
+		sid := fmt.Sprintf("SM%03d", i+1)
+		require.NoError(t, s.SaveMessage(ctx, &Message{
+			SID: sid, Provider: "twilio",
+			From: "+15550000001", To: "+15551234567",
+			Body: "hello", Status: "queued",
+		}))
+		// Override created_at via direct SQL since SaveMessage uses CURRENT_TIMESTAMP.
+		impl, ok := s.(*sqliteStore)
+		require.True(t, ok, "expected *sqliteStore")
+		_, err := impl.db.ExecContext(ctx,
+			`UPDATE messages SET created_at = ? WHERE message_sid = ?`,
+			base.Add(time.Duration(i)*time.Minute), sid)
+		require.NoError(t, err)
+		sids[i] = sid
+	}
+	return sids
+}
+
+func TestPruneMessagesByCount_NoOpWhenAtOrBelowCap(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	seedMessagesAt(t, s, 3, time.Now().Add(-time.Hour))
+
+	got, err := s.PruneMessagesByCount(ctx, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got, "below cap")
+
+	got, err = s.PruneMessagesByCount(ctx, 3)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got, "exactly at cap")
+}
+
+func TestPruneMessagesByCount_DeletesOldestFirst(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	base := time.Now().Add(-time.Hour)
+	sids := seedMessagesAt(t, s, 5, base)
+
+	// cap=2 → delete 3 oldest, keep 2 newest
+	got, err := s.PruneMessagesByCount(ctx, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 3, got)
+
+	// The two newest (SM004, SM005) should remain.
+	for _, deletedSID := range sids[:3] {
+		_, err := s.GetMessage(ctx, deletedSID)
+		require.ErrorIs(t, err, ErrNotFound, "expected %s deleted", deletedSID)
+	}
+	for _, keptSID := range sids[3:] {
+		_, err := s.GetMessage(ctx, keptSID)
+		assert.NoError(t, err, "expected %s kept", keptSID)
+	}
+}
+
+func TestPruneMessagesByCount_ZeroCapIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	seedMessagesAt(t, s, 3, time.Now().Add(-time.Hour))
+
+	got, err := s.PruneMessagesByCount(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+
+	_, total, _ := s.ListMessages(ctx, 10, 0)
+	assert.Equal(t, 3, total, "no rows should be deleted")
+}
+
+func TestPruneMessagesByCount_DeletesRelatedDeliveryEvents(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	sids := seedMessagesAt(t, s, 2, time.Now().Add(-time.Hour))
+	// Attach a delivery event to the older message.
+	require.NoError(t, s.SaveDeliveryEvent(ctx, &DeliveryEvent{
+		MessageSID: sids[0], EventType: "status", Status: "queued",
+	}))
+
+	got, err := s.PruneMessagesByCount(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got)
+
+	// Direct SQL check: the delivery_events row should be gone too.
+	impl := s.(*sqliteStore)
+	var n int
+	require.NoError(t, impl.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM delivery_events WHERE message_sid = ?`, sids[0]).Scan(&n))
+	assert.Equal(t, 0, n, "delivery_events for pruned message should be deleted")
+}
+
+func TestPruneMessagesByAge_DeletesOlderThanCutoff(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	// Five messages spaced 1h apart; cutoff between #3 and #4 deletes 3.
+	base := time.Now().Add(-10 * time.Hour)
+	step := time.Hour
+	for i := 0; i < 5; i++ {
+		sid := fmt.Sprintf("SMA%d", i)
+		require.NoError(t, s.SaveMessage(ctx, &Message{SID: sid, Provider: "twilio", From: "+1", To: "+1", Body: "x", Status: "queued"}))
+		impl := s.(*sqliteStore)
+		_, err := impl.db.ExecContext(ctx,
+			`UPDATE messages SET created_at = ? WHERE message_sid = ?`,
+			base.Add(time.Duration(i)*step), sid)
+		require.NoError(t, err)
+	}
+	cutoff := base.Add(3 * step)
+
+	got, err := s.PruneMessagesByAge(ctx, cutoff)
+	require.NoError(t, err)
+	assert.Equal(t, 3, got, "messages SMA0..SMA2 should be pruned")
+
+	for _, sid := range []string{"SMA0", "SMA1", "SMA2"} {
+		_, err := s.GetMessage(ctx, sid)
+		require.ErrorIs(t, err, ErrNotFound, "expected %s deleted", sid)
+	}
+	for _, sid := range []string{"SMA3", "SMA4"} {
+		_, err := s.GetMessage(ctx, sid)
+		assert.NoError(t, err, "expected %s kept", sid)
+	}
+}
+
+func TestPruneMessagesByAge_FutureCutoffNoOp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	seedMessagesAt(t, s, 3, time.Now())
+
+	got, err := s.PruneMessagesByAge(ctx, time.Now().Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+}
+
+func TestPruneCallsByCount_DeletesOldest(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	base := time.Now().Add(-time.Hour)
+	sids := make([]string, 4)
+	for i := 0; i < 4; i++ {
+		sid := fmt.Sprintf("CA%03d", i+1)
+		require.NoError(t, s.SaveCall(ctx, &Call{SID: sid, Provider: "twilio", From: "+1", To: "+1", Status: "queued"}))
+		impl := s.(*sqliteStore)
+		_, err := impl.db.ExecContext(ctx,
+			`UPDATE calls SET created_at = ? WHERE call_sid = ?`,
+			base.Add(time.Duration(i)*time.Minute), sid)
+		require.NoError(t, err)
+		sids[i] = sid
+	}
+
+	got, err := s.PruneCallsByCount(ctx, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 2, got)
+
+	for _, deletedSID := range sids[:2] {
+		_, err := s.GetCall(ctx, deletedSID)
+		require.ErrorIs(t, err, ErrNotFound)
+	}
+	for _, keptSID := range sids[2:] {
+		_, err := s.GetCall(ctx, keptSID)
+		assert.NoError(t, err)
+	}
+}
+
+func TestPruneCallsByAge_DeletesOlderThanCutoff(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	base := time.Now().Add(-10 * time.Hour)
+	for i := 0; i < 3; i++ {
+		sid := fmt.Sprintf("CAA%d", i)
+		require.NoError(t, s.SaveCall(ctx, &Call{SID: sid, Provider: "twilio", From: "+1", To: "+1", Status: "queued"}))
+		impl := s.(*sqliteStore)
+		_, err := impl.db.ExecContext(ctx,
+			`UPDATE calls SET created_at = ? WHERE call_sid = ?`,
+			base.Add(time.Duration(i)*time.Hour), sid)
+		require.NoError(t, err)
+	}
+	cutoff := base.Add(2 * time.Hour)
+
+	got, err := s.PruneCallsByAge(ctx, cutoff)
+	require.NoError(t, err)
+	assert.Equal(t, 2, got)
+}
+
+func TestPruneEmptyTable_NoOp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	got, err := s.PruneMessagesByCount(ctx, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+
+	got, err = s.PruneCallsByCount(ctx, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+
+	got, err = s.PruneMessagesByAge(ctx, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
 }

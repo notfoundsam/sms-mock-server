@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/notfoundsam/sms-mock-server/app/config"
 	"github.com/notfoundsam/sms-mock-server/app/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,23 +130,6 @@ func TestMakeCall_UnknownNumber(t *testing.T) {
 	calls := ts.dispatcher.CallCalls()
 	require.Len(t, calls, 1)
 	assert.False(t, calls[0].IsKnown)
-}
-
-func TestMakeCall_CallbacksDisabledClearsURL(t *testing.T) {
-	ts := newTestServer(t, func(c *config.Twilio) {
-		c.Callbacks.Enabled = false
-	})
-	form := defaultCallForm()
-	form.Set("StatusCallback", "http://app/cb")
-
-	rec := httptest.NewRecorder()
-	ts.MakeCall(rec, authedCallRequest(form))
-
-	calls := ts.dispatcher.CallCalls()
-	require.Len(t, calls, 1)
-	assert.Empty(t, calls[0].CallbackURL, "CallbackURL should be empty when callbacks globally disabled")
-	rows, _, _ := ts.store.ListCalls(context.Background(), 10, 0)
-	assert.Equal(t, "http://app/cb", rows[0].CallbackURL, "persisted CallbackURL should retain user-supplied URL")
 }
 
 // --- error paths ---

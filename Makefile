@@ -45,9 +45,9 @@ test-race:
 lint:
 	golangci-lint run ./...
 
-## run: Run the server directly (uses local config.yaml)
+## run: Run the server directly (configured entirely via SMS_MOCK_* env vars)
 run:
-	go run ./app -config config.yaml
+	go run ./app
 
 ## tidy: Tidy go.mod (remove unused deps, fetch missing)
 tidy:
@@ -65,10 +65,9 @@ version:
 docker-snapshot:
 	goreleaser release --snapshot --clean
 
-## up: Pull latest published image and start via docker compose
+## up: Build the image from local source and start via docker compose
 up:
-	$(COMPOSE) pull
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --build
 	@echo "SMS Mock Server is running at http://localhost:8080"
 
 ## stop: Stop the application

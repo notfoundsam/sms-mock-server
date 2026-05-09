@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -25,18 +24,16 @@ import (
 	"github.com/notfoundsam/sms-mock-server/app/httpapi"
 	"github.com/notfoundsam/sms-mock-server/app/provider"
 	"github.com/notfoundsam/sms-mock-server/app/provider/twilio"
+	"github.com/notfoundsam/sms-mock-server/app/prune"
 	"github.com/notfoundsam/sms-mock-server/app/storage"
 	tmpl "github.com/notfoundsam/sms-mock-server/app/template"
 	"github.com/notfoundsam/sms-mock-server/app/ui"
 )
 
 func main() {
-	configPath := flag.String("config", "", "path to config.yaml (defaults to $CONFIG_PATH or ./config.yaml)")
-	flag.Parse()
-
 	logger := newLogger()
 
-	if err := run(*configPath, logger); err != nil {
+	if err := run(logger); err != nil {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
 	}
@@ -114,15 +111,14 @@ func buildStack(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	}, cfg.Twilio.AccountSid)
 
 	apiServer := httpapi.NewServer(httpapi.Deps{
-		Logger:           logger,
-		Provider:         prov,
-		Store:            store,
-		Templates:        engine,
-		Dispatcher:       dispatcher,
-		AccountSid:       cfg.Twilio.AccountSid,
-		CallbacksEnabled: cfg.Twilio.Callbacks.Enabled,
+		Logger:     logger,
+		Provider:   prov,
+		Store:      store,
+		Templates:  engine,
+		Dispatcher: dispatcher,
+		AccountSid: cfg.Twilio.AccountSid,
 	})
-	uiHandler := ui.New(logger, store, engine, prov.Name(), cfg.Server.Timezone)
+	uiHandler := ui.New(logger, store, engine, prov.Name(), cfg.Server.Timezone, cfg.Limits.HideDeleteAllButton)
 
 	mux := http.NewServeMux()
 	apiServer.RegisterRoutes(mux)
@@ -140,8 +136,8 @@ func buildStack(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	return &stack{store: store, dispatcher: dispatcher, handler: handler}, nil
 }
 
-func run(configPath string, logger *slog.Logger) error {
-	cfg, err := config.Load(configPath)
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -161,6 +157,19 @@ func run(configPath string, logger *slog.Logger) error {
 			logger.Warn("store close failed", "error", err)
 		}
 	}()
+
+	pruner := prune.New(st.store, logger, cfg.Limits, clock.Real{})
+	if pruner != nil {
+		go func() {
+			if err := pruner.Run(rootCtx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Warn("pruner stopped with error", "error", err)
+			}
+		}()
+		logger.Info("pruner started",
+			"max_messages", cfg.Limits.MaxMessages,
+			"max_calls", cfg.Limits.MaxCalls,
+			"max_age", cfg.Limits.MaxAge)
+	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
@@ -198,7 +207,9 @@ func run(configPath string, logger *slog.Logger) error {
 
 	// Shutdown sequence: HTTP server (stop accepting new connections, drain
 	// in-flight requests) → dispatcher (drain workers, no new HTTP callbacks)
-	// → store close (deferred above). 30s deadline for the whole sequence.
+	// → cancel rootCtx + wait for pruner to exit (so its next query doesn't
+	// race with store.Close) → store close (deferred above). 30s deadline
+	// for the whole sequence.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
@@ -207,6 +218,12 @@ func run(configPath string, logger *slog.Logger) error {
 	}
 	if err := st.dispatcher.Close(shutdownCtx); err != nil {
 		logger.Warn("dispatcher close failed", "error", err)
+	}
+	if pruner != nil {
+		rootCancel()
+		if err := pruner.Wait(shutdownCtx); err != nil {
+			logger.Warn("pruner wait failed", "error", err)
+		}
 	}
 	logger.Info("shutdown complete")
 	return nil

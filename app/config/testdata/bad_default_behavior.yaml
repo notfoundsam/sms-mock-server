@@ -1,9 +1,0 @@
-provider: twilio
-
-twilio:
-  account_sid: ACtest
-  auth_token: testtoken
-  default_behavior: maybe
-
-database:
-  path: "./testdata/tmp/bad.db"

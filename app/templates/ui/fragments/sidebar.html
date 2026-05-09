@@ -35,6 +35,7 @@
     </div>
     {{ end }}
 
+    {{ if not .HideDeleteAllButton }}
     <form class="sidebar-clear" method="POST" action="/clear/{{ .Type }}"
           hx-post="/clear/{{ .Type }}"
           hx-swap="none"
@@ -42,4 +43,5 @@
           hx-on::after-request="if(event.detail.successful){{ if eq .Type "calls" }} window.location='/calls'{{ else }} window.location='/'{{ end }}">
         <button type="submit" class="btn-danger">Delete all {{ .Type }}</button>
     </form>
+    {{ end }}
 </div>

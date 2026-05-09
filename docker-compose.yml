@@ -1,14 +1,32 @@
 services:
   sms-mock-server:
-    image: notfoundsam/sms-mock-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: sms-mock-server
     ports:
       - "8080:8080"
-    volumes:
-      # Override the embedded config without rebuilding the image.
-      - ./config.yaml:/app/config.yaml
     environment:
       - LOG_LEVEL=INFO
+      # Validation is off by default in compose so the mock works out of the
+      # box. Set REQUIRE_AUTH=true (and supply real ACCOUNT_SID/AUTH_TOKEN
+      # below) to mirror Twilio's auth behavior.
+      - SMS_MOCK_TWILIO_REQUIRE_AUTH=false
+      - SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=false
+      - SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=false
+      #
+      # --- Twilio credentials (required when REQUIRE_AUTH=true) ---
+      # - SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      # - SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here
+      #
+      # --- Number lists (comma-separated) ---
+      # Numbers in SUCCESS go queued → sent → delivered (callbacks fire if
+      # StatusCallback is set). Numbers in FAILURE go queued → failed.
+      # Anything else stays queued forever — that's how callbacks are
+      # effectively suppressed (leave both lists empty).
+      - SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543
+      - SMS_MOCK_TWILIO_FAILURE_NUMBERS=+15559999999
+      # - SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS=+15550000001,+15550000002
     networks:
       - sms-mock-network
     # Note: distroless/static base image has no shell or curl/wget, so the
@@ -26,10 +44,8 @@ services:
     #   mkdir -p ./data && sudo chown -R 65532:65532 ./data
     #
     # environment:
-    #   - LOG_LEVEL=INFO
     #   - SMS_MOCK_DB_PATH=/data/mock_server.db
     # volumes:
-    #   - ./config.yaml:/app/config.yaml
     #   - ./data:/data
 
 networks:

@@ -22,19 +22,28 @@ const itemsPerPage = 50
 // Handler holds dependencies for UI routes. Build via New, then call Register
 // on a ServeMux.
 type Handler struct {
-	logger   *slog.Logger
-	store    storage.Store
-	tmpl     *tmpl.Engine
-	provider string // for nav header
-	timezone string // displayed in nav header
+	logger              *slog.Logger
+	store               storage.Store
+	tmpl                *tmpl.Engine
+	provider            string // for nav header
+	timezone            string // displayed in nav header
+	hideDeleteAllButton bool   // hides the "Delete all" sidebar button when true
 }
 
-// New constructs a UI Handler.
-func New(logger *slog.Logger, store storage.Store, engine *tmpl.Engine, providerName, timezone string) *Handler {
+// New constructs a UI Handler. hideDeleteAllButton hides the bulk-delete
+// button in the sidebar; the backend /clear/* endpoints remain functional.
+func New(logger *slog.Logger, store storage.Store, engine *tmpl.Engine, providerName, timezone string, hideDeleteAllButton bool) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{logger: logger, store: store, tmpl: engine, provider: providerName, timezone: timezone}
+	return &Handler{
+		logger:              logger,
+		store:               store,
+		tmpl:                engine,
+		provider:            providerName,
+		timezone:            timezone,
+		hideDeleteAllButton: hideDeleteAllButton,
+	}
 }
 
 // Register attaches all UI routes to mux.
@@ -73,9 +82,10 @@ type pageData struct {
 	Total       int
 	Messages    []storage.Message // non-nil when Type=="messages"
 	Calls       []storage.Call    // non-nil when Type=="calls"
-	TagNames    []string          // all tag names attached to any record (sidebar)
-	ActiveCount int               // total for the active type (sidebar nav badge)
-	OtherCount  int               // total for the OTHER type (sidebar nav badge)
+	TagNames            []string // all tag names attached to any record (sidebar)
+	ActiveCount         int      // total for the active type (sidebar nav badge)
+	OtherCount          int      // total for the OTHER type (sidebar nav badge)
+	HideDeleteAllButton bool     // hide the bulk-delete button (mirrors config.Limits)
 }
 
 // listFragmentData feeds fragments/list.html.
@@ -92,12 +102,13 @@ type listFragmentData struct {
 
 // sidebarFragmentData feeds fragments/sidebar.html.
 type sidebarFragmentData struct {
-	Type        string
-	Q           string
-	Query       Query
-	TagNames    []string
-	ActiveCount int
-	OtherCount  int
+	Type                string
+	Q                   string
+	Query               Query
+	TagNames            []string
+	ActiveCount         int
+	OtherCount          int
+	HideDeleteAllButton bool
 }
 
 // detailData feeds view/message.html and view/call.html. The Q/Status/sidebar
@@ -115,12 +126,13 @@ type detailData struct {
 
 	// Filter state carried through from the inbox URL so the Back link
 	// preserves it and the sidebar Tags section highlights correctly.
-	Q           string
-	Status      string
-	Query       Query
-	TagNames    []string
-	ActiveCount int
-	OtherCount  int
+	Q                   string
+	Status              string
+	Query               Query
+	TagNames            []string
+	ActiveCount         int
+	OtherCount          int
+	HideDeleteAllButton bool
 }
 
 // BackURL renders the Back-to-inbox URL with q/status preserved.
@@ -200,19 +212,20 @@ func (h *Handler) messagesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderUI(w, "messages.html", pageData{
-		Provider:    h.provider,
-		Timezone:    h.timezone,
-		Type:        "messages",
-		Q:           q,
-		Status:      status,
-		Query:       parsed,
-		Page:        page,
-		TotalPages:  totalPages(total),
-		Total:       total,
-		Messages:    rows,
-		TagNames:    sb.TagNames,
-		ActiveCount: sb.ActiveCount,
-		OtherCount:  sb.OtherCount,
+		Provider:            h.provider,
+		Timezone:            h.timezone,
+		Type:                "messages",
+		Q:                   q,
+		Status:              status,
+		Query:               parsed,
+		Page:                page,
+		TotalPages:          totalPages(total),
+		Total:               total,
+		Messages:            rows,
+		TagNames:            sb.TagNames,
+		ActiveCount:         sb.ActiveCount,
+		OtherCount:          sb.OtherCount,
+		HideDeleteAllButton: h.hideDeleteAllButton,
 	})
 }
 
@@ -235,19 +248,20 @@ func (h *Handler) callsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderUI(w, "calls.html", pageData{
-		Provider:    h.provider,
-		Timezone:    h.timezone,
-		Type:        "calls",
-		Q:           q,
-		Status:      status,
-		Query:       parsed,
-		Page:        page,
-		TotalPages:  totalPages(total),
-		Total:       total,
-		Calls:       rows,
-		TagNames:    sb.TagNames,
-		ActiveCount: sb.ActiveCount,
-		OtherCount:  sb.OtherCount,
+		Provider:            h.provider,
+		Timezone:            h.timezone,
+		Type:                "calls",
+		Q:                   q,
+		Status:              status,
+		Query:               parsed,
+		Page:                page,
+		TotalPages:          totalPages(total),
+		Total:               total,
+		Calls:               rows,
+		TagNames:            sb.TagNames,
+		ActiveCount:         sb.ActiveCount,
+		OtherCount:          sb.OtherCount,
+		HideDeleteAllButton: h.hideDeleteAllButton,
 	})
 }
 
@@ -292,19 +306,20 @@ func (h *Handler) messageDetail(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	raw, _ := json.MarshalIndent(m, "", "  ")
 	h.renderUI(w, "view/message.html", detailData{
-		Provider:        h.provider,
-		Timezone:        h.timezone,
-		Type:            "messages",
-		Message:         m,
-		RawJSON:         string(raw),
-		CallbackSummary: summary,
-		RecordTags:      recordTags,
-		Q:               q,
-		Status:          r.URL.Query().Get("status"),
-		Query:           ParseQuery(q),
-		TagNames:        sb.TagNames,
-		ActiveCount:     sb.ActiveCount,
-		OtherCount:      sb.OtherCount,
+		Provider:            h.provider,
+		Timezone:            h.timezone,
+		Type:                "messages",
+		Message:             m,
+		RawJSON:             string(raw),
+		CallbackSummary:     summary,
+		RecordTags:          recordTags,
+		Q:                   q,
+		Status:              r.URL.Query().Get("status"),
+		Query:               ParseQuery(q),
+		TagNames:            sb.TagNames,
+		ActiveCount:         sb.ActiveCount,
+		OtherCount:          sb.OtherCount,
+		HideDeleteAllButton: h.hideDeleteAllButton,
 	})
 }
 
@@ -344,19 +359,20 @@ func (h *Handler) callDetail(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	raw, _ := json.MarshalIndent(c, "", "  ")
 	h.renderUI(w, "view/call.html", detailData{
-		Provider:        h.provider,
-		Timezone:        h.timezone,
-		Type:            "calls",
-		Call:            c,
-		RawJSON:         string(raw),
-		CallbackSummary: summary,
-		RecordTags:      recordTags,
-		Q:               q,
-		Status:          r.URL.Query().Get("status"),
-		Query:           ParseQuery(q),
-		TagNames:        sb.TagNames,
-		ActiveCount:     sb.ActiveCount,
-		OtherCount:      sb.OtherCount,
+		Provider:            h.provider,
+		Timezone:            h.timezone,
+		Type:                "calls",
+		Call:                c,
+		RawJSON:             string(raw),
+		CallbackSummary:     summary,
+		RecordTags:          recordTags,
+		Q:                   q,
+		Status:              r.URL.Query().Get("status"),
+		Query:               ParseQuery(q),
+		TagNames:            sb.TagNames,
+		ActiveCount:         sb.ActiveCount,
+		OtherCount:          sb.OtherCount,
+		HideDeleteAllButton: h.hideDeleteAllButton,
 	})
 }
 
@@ -404,12 +420,13 @@ func (h *Handler) sidebarFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderUI(w, "fragments/sidebar.html", sidebarFragmentData{
-		Type:        typ,
-		Q:           q,
-		Query:       parsed,
-		TagNames:    sb.TagNames,
-		ActiveCount: sb.ActiveCount,
-		OtherCount:  sb.OtherCount,
+		Type:                typ,
+		Q:                   q,
+		Query:               parsed,
+		TagNames:            sb.TagNames,
+		ActiveCount:         sb.ActiveCount,
+		OtherCount:          sb.OtherCount,
+		HideDeleteAllButton: h.hideDeleteAllButton,
 	})
 }
 

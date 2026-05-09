@@ -9,17 +9,17 @@ AUTH_TOKEN="your_auth_token_here"
 SERVER_URL="http://localhost:8080"
 CALLBACK_URL="http://localhost:8080/callback-test"
 
-# From numbers (must be in allowed_from_numbers in config.yaml)
+# From numbers (must be in $SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS)
 FROM_NUMBERS=(
     "+15550000001"
     "+15550000002"
 )
 
 # To numbers - different scenarios
-TO_REGISTERED="+15551234567"      # In registered_numbers - will succeed
-TO_REGISTERED_2="+15559876543"    # In registered_numbers - will succeed
-TO_FAILURE="+15559999999"         # In failure_numbers - will fail
-TO_UNKNOWN="+15553334444"         # Not in any list - uses default_behavior
+TO_REGISTERED="+15551234567"      # In SMS_MOCK_TWILIO_SUCCESS_NUMBERS - will succeed
+TO_REGISTERED_2="+15559876543"    # In SMS_MOCK_TWILIO_SUCCESS_NUMBERS - will succeed
+TO_FAILURE="+15559999999"         # In SMS_MOCK_TWILIO_FAILURE_NUMBERS - will fail
+TO_UNKNOWN="+15553334444"         # Not in any list - stays queued forever, no callbacks
 
 # TwiML URLs for calls
 TWIML_URLS=(
@@ -147,7 +147,7 @@ echo -e "${YELLOW}Creating failed messages...${NC}"
 send_sms "${FROM_NUMBERS[0]}" "$TO_FAILURE" "This message will fail delivery" "true" "verification"
 send_sms "${FROM_NUMBERS[1]}" "$TO_FAILURE" "Another failed message attempt" "true"
 
-# 3. Messages to unknown numbers (uses default_behavior)
+# 3. Messages to unknown numbers (will stay queued forever)
 echo -e "${YELLOW}Creating messages to unknown numbers...${NC}"
 send_sms "${FROM_NUMBERS[0]}" "$TO_UNKNOWN" "Message to unknown number" "true"
 send_sms "${FROM_NUMBERS[1]}" "+15556667777" "Testing unknown recipient" "false"

@@ -22,36 +22,32 @@ type Server struct {
 	tmpl       *tmpl.Engine
 	dispatcher Dispatcher
 
-	accountSid       string // copied from config.Twilio.AccountSid for response rendering
-	callbacksEnabled bool   // copied from config.Twilio.Callbacks.Enabled
+	accountSid string // copied from config.Twilio.AccountSid for response rendering
 }
 
 // Deps bundles the constructor inputs.
 type Deps struct {
-	Logger           *slog.Logger
-	Provider         provider.Provider
-	Store            storage.Store
-	Templates        *tmpl.Engine
-	Dispatcher       Dispatcher
-	AccountSid       string
-	CallbacksEnabled bool
+	Logger     *slog.Logger
+	Provider   provider.Provider
+	Store      storage.Store
+	Templates  *tmpl.Engine
+	Dispatcher Dispatcher
+	AccountSid string
 }
 
-// NewServer assembles a Server from its dependencies. Caller must ensure
-// no field is nil except CallbacksEnabled (zero-value false is fine).
+// NewServer assembles a Server from its dependencies.
 func NewServer(deps Deps) *Server {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Server{
-		logger:           logger,
-		provider:         deps.Provider,
-		store:            deps.Store,
-		tmpl:             deps.Templates,
-		dispatcher:       deps.Dispatcher,
-		accountSid:       deps.AccountSid,
-		callbacksEnabled: deps.CallbacksEnabled,
+		logger:     logger,
+		provider:   deps.Provider,
+		store:      deps.Store,
+		tmpl:       deps.Templates,
+		dispatcher: deps.Dispatcher,
+		accountSid: deps.AccountSid,
 	}
 }
 
