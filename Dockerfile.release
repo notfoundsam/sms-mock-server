@@ -5,11 +5,23 @@
 #
 # For local development, use the top-level Dockerfile (which compiles from
 # source) or `make run` on the host.
+
+# Tiny scratch stage just to create /data with nonroot ownership.
+# Distroless has no shell, so we can't `mkdir` or `chown` there directly —
+# the directory has to come from a stage that does.
+FROM alpine:3.20 AS dirs
+RUN mkdir -p /data && chown 65532:65532 /data
+
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 
 COPY sms-mock-server /app/sms-mock-server
+# /data is owned by `nonroot` (UID 65532). When a Docker volume mounts
+# here for the first time, Docker copies these permissions onto the
+# fresh volume — so `SMS_MOCK_DB_PATH=/data/...` works without any
+# host-side chown dance.
+COPY --from=dirs --chown=nonroot:nonroot /data /data
 
 EXPOSE 8080
 

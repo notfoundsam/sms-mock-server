@@ -43,21 +43,33 @@ The bundled `docker-compose.yml` contains a commented-out `environment:` block l
 
 ### Persistence
 
-By default the SQLite DB lives at `/tmp/mock_server.db` inside the container and is wiped on container restart — fine for the typical "fresh state per test run" use case. To persist data across restarts, set `SMS_MOCK_DB_PATH` to a path inside a mounted volume:
+By default the SQLite DB lives at `/tmp/mock_server.db` inside the container and is wiped on container restart — fine for the typical "fresh state per test run" use case. To persist data across restarts, set `SMS_MOCK_DB_PATH` to a path inside a mounted volume.
+
+The bundled `docker-compose.yml` already wires this up using a named Docker volume:
 
 ```yaml
 services:
   sms-mock-server:
-    image: notfoundsam/sms-mock-server:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
+    # ...
     environment:
       - SMS_MOCK_DB_PATH=/data/mock_server.db
+    volumes:
+      - sms-mock-data:/data
+
+volumes:
+  sms-mock-data:
 ```
 
-On Linux you must chown the host directory to UID 65532 first (the distroless `nonroot` user the container runs as): `mkdir -p ./data && sudo chown -R 65532:65532 ./data`. Docker Desktop on macOS/Windows handles UID translation automatically.
+The volume survives `docker compose down`. Remove it with `docker compose down -v` (or `docker volume rm sms-mock-data`).
+
+If you'd rather store the DB in a host directory you can inspect directly (e.g. with `sqlite3 ./data/mock_server.db`), replace the volume mount with a bind mount:
+
+```yaml
+    volumes:
+      - ./data:/data
+```
+
+On Linux the host directory must be writable by UID 65532 (the distroless `nonroot` user the container runs as): `mkdir -p ./data && sudo chown -R 65532:65532 ./data`. Docker Desktop on macOS/Windows handles UID translation automatically.
 
 ### Option 3: Local Go build
 
