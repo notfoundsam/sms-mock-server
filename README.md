@@ -17,11 +17,14 @@ A mock server for Twilio SMS and Call APIs, perfect for development and testing 
 ### Option 1: Docker Hub (Easiest)
 
 ```bash
-# Pull and run from Docker Hub
+# Pull and run from Docker Hub. All configuration is via env vars.
 docker run -d \
   -p 8080:8080 \
-  -v $(pwd)/config.yaml:/app/config.yaml \
-  -v $(pwd)/data:/app/data \
+  -e SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX \
+  -e SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here \
+  -e SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543 \
+  -e SMS_MOCK_TWILIO_FAILURE_NUMBERS=+15559999999 \
+  -e SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS=+15550000001,+15550000002 \
   --name sms-mock-server \
   notfoundsam/sms-mock-server:latest
 
@@ -34,16 +37,9 @@ open http://localhost:8080
 ```bash
 # Using the provided docker-compose.yml
 docker compose up -d
-
-# Or create your own docker-compose.yml:
-services:
-  sms-mock-server:
-    image: notfoundsam/sms-mock-server:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config.yaml:/app/config.yaml
 ```
+
+The bundled `docker-compose.yml` contains a commented-out `environment:` block listing every supported variable — uncomment what you need.
 
 ### Persistence
 
@@ -56,7 +52,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config.yaml:/app/config.yaml
       - ./data:/data
     environment:
       - SMS_MOCK_DB_PATH=/data/mock_server.db
@@ -70,65 +65,81 @@ On Linux you must chown the host directory to UID 65532 first (the distroless `n
 # Build a static binary into ./bin/sms-mock-server
 make build
 
-# Run it against the local config.yaml
-./bin/sms-mock-server -config config.yaml
+# Run it (configuration via env vars, e.g. for testing without auth):
+SMS_MOCK_TWILIO_REQUIRE_AUTH=false ./bin/sms-mock-server
 
 # Or skip the build step and use `go run`:
 make run
 ```
 
-Requirements: Go 1.25+ (matches `go.mod`'s declared toolchain). The binary is fully static (`CGO_ENABLED=0`) and embeds all templates and static assets, so the running binary needs nothing besides `config.yaml` and a writable directory for the SQLite DB.
+Requirements: Go 1.25+ (matches `go.mod`'s declared toolchain). The binary is fully static (`CGO_ENABLED=0`) and embeds all templates and static assets, so the running binary needs nothing besides a writable directory for the SQLite DB. All configuration is supplied via environment variables.
 
 ## Configuration
 
-Edit `config.yaml` to customize the mock server behavior:
+The server is configured entirely via `SMS_MOCK_*` environment variables. Common (provider-agnostic) settings use the bare `SMS_MOCK_` prefix; Twilio-specific settings use `SMS_MOCK_TWILIO_`.
 
-```yaml
-server:
-  host: 0.0.0.0
-  port: 8080
-  timezone: UTC  # Timezone for UI date display (e.g., America/New_York, Asia/Tokyo)
+### Common settings
 
-provider: twilio
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SMS_MOCK_HOST` | `0.0.0.0` | Listen address |
+| `SMS_MOCK_PORT` | `8080` | Listen port |
+| `SMS_MOCK_TIMEZONE` | `UTC` | Timezone for UI date display (e.g. `America/New_York`, `Asia/Tokyo`) |
+| `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite DB path. Default is ephemeral; mount a host directory and override to persist. |
+| `SMS_MOCK_PROVIDER` | `twilio` | Provider identifier. Only `twilio` is supported today. |
 
-twilio:
-  account_sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-  auth_token: your_auth_token_here
+### Twilio settings
 
-  # Validation settings (toggle on/off)
-  validation:
-    require_auth: true              # Validate credentials
-    validate_phone_format: true     # Check E.164 format
-    check_from_numbers: true        # Require From in allowed list
-    require_parameters: true        # Validate required params
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SMS_MOCK_TWILIO_ACCOUNT_SID` | (empty) | Required when `REQUIRE_AUTH=true` |
+| `SMS_MOCK_TWILIO_AUTH_TOKEN` | (empty) | Required when `REQUIRE_AUTH=true` |
+| `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` | (empty) | Comma-separated. Numbers go `queued → sent → delivered`. |
+| `SMS_MOCK_TWILIO_FAILURE_NUMBERS` | (empty) | Comma-separated. Numbers go `queued → failed`. |
+| `SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS` | (empty) | Comma-separated. From-allowlist; only enforced when `CHECK_FROM_NUMBERS=true`. |
+| `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | Validate HTTP Basic credentials |
+| `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | Check E.164 phone format |
+| `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | Require `From` to be in the allowlist |
+| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | Validate required form fields |
+| `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | Delay between status transitions |
+| `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | Total attempts for outbound callbacks |
+| `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | Delay between retry attempts |
 
-  # Number behavior
-  default_behavior: success  # "success" or "failure"
+### Number behavior
 
-  registered_numbers:
-    - "+15551234567"  # These always succeed
-    - "+15559876543"
+A destination number's outcome is determined by which list it appears in:
 
-  allowed_from_numbers:
-    - "+15550000001"  # Valid From numbers
-    - "+15550000002"
+1. **In `SMS_MOCK_TWILIO_FAILURE_NUMBERS`** → status flow `queued → failed`. If `StatusCallback` is set, callbacks fire.
+2. **In `SMS_MOCK_TWILIO_SUCCESS_NUMBERS`** → status flow `queued → sent → delivered`. If `StatusCallback` is set, callbacks fire.
+3. **In neither list** → stays `queued` forever. No callbacks fire. This is also how the server runs in "callbacks-effectively-off" mode: leave both lists empty.
 
-  failure_numbers:
-    - "+15559999999"  # These always fail
+Failure list takes precedence if a number appears in both.
 
-  # Callback settings
-  callbacks:
-    enabled: true
-    delay_seconds: 2
-    retry_attempts: 3
-    retry_delay_seconds: 5
-```
+### Migration from `config.yaml`
 
-### Number Behavior Logic
+Earlier versions of this project used a YAML config file. The mapping to env vars is straightforward:
 
-1. **In `failure_numbers`** → Always fails
-2. **In `registered_numbers`** → Always succeeds
-3. **Not in either** → Uses `default_behavior` setting
+| Old YAML key | New env var |
+| --- | --- |
+| `server.host` | `SMS_MOCK_HOST` |
+| `server.port` | `SMS_MOCK_PORT` |
+| `server.timezone` | `SMS_MOCK_TIMEZONE` |
+| `provider` | `SMS_MOCK_PROVIDER` |
+| `database.path` | `SMS_MOCK_DB_PATH` |
+| `twilio.account_sid` | `SMS_MOCK_TWILIO_ACCOUNT_SID` |
+| `twilio.auth_token` | `SMS_MOCK_TWILIO_AUTH_TOKEN` |
+| `twilio.registered_numbers` | `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` (renamed) |
+| `twilio.failure_numbers` | `SMS_MOCK_TWILIO_FAILURE_NUMBERS` |
+| `twilio.allowed_from_numbers` | `SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS` |
+| `twilio.validation.*` | `SMS_MOCK_TWILIO_REQUIRE_AUTH` / `_VALIDATE_PHONE_FORMAT` / `_CHECK_FROM_NUMBERS` / `_REQUIRE_PARAMETERS` |
+| `twilio.callbacks.delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` |
+| `twilio.callbacks.retry_attempts` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` |
+| `twilio.callbacks.retry_delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` |
+
+**Removed settings** (with no replacement):
+
+- `twilio.default_behavior` — was effectively dead code (the dispatcher short-circuits on unknown numbers, so the field never observably affected outcomes). Numbers either appear in a list and resolve to that list's outcome, or they don't and stay queued.
+- `twilio.callbacks.enabled` — replaced by the implicit rule that empty number lists suppress all status progression and callbacks. Note: the old combination "callbacks.enabled=false + populated number lists" (status flow runs in the UI but outbound HTTP callbacks are suppressed) no longer exists. Empty lists is now the only way to suppress callbacks, and it also suppresses status progression. If you relied on the old combination for testing UI-visible status changes without hitting external endpoints, you'll need to point `StatusCallback` at a sink you control instead.
 
 ## SDK Integration
 
@@ -460,7 +471,6 @@ sms-mock-server/
 │   ├── DESIGN.md              # Architecture documentation
 │   └── plans/                 # Implementation plans (history)
 ├── .github/workflows/         # CI (test + lint + shellcheck) + release (goreleaser)
-├── config.yaml                # Server configuration
 ├── Makefile                   # Build / test / docker targets
 ├── Dockerfile                 # Multi-stage; static binary on distroless/static
 ├── docker-compose.yml
@@ -472,20 +482,19 @@ sms-mock-server/
 ## Troubleshooting
 
 **Authentication errors even with correct credentials:**
-- Make sure you updated `account_sid` and `auth_token` in `config.yaml`
-- Or set `validation.require_auth: false` for quick testing
+- Make sure `SMS_MOCK_TWILIO_ACCOUNT_SID` and `SMS_MOCK_TWILIO_AUTH_TOKEN` are set
+- Or set `SMS_MOCK_TWILIO_REQUIRE_AUTH=false` for quick testing
 
 **Callbacks not being received:**
-- Check that `callbacks.enabled: true` in config
-- Verify the `To` number is in `registered_numbers` (success flow) or `failure_numbers` (failure flow). Numbers in *neither* list stay queued forever and produce no callbacks — this is intentional, mirroring the original Python behavior.
+- Verify the `To` number is in `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` (success flow) or `SMS_MOCK_TWILIO_FAILURE_NUMBERS` (failure flow). Numbers in *neither* list stay queued forever and produce no callbacks — this is also the way to disable callbacks entirely (leave both lists empty).
 - Verify your callback URL is accessible from the mock server
 - For local testing, use the built-in `/callback-test` endpoint: `http://localhost:8080/callback-test`
 - Inspect callback delivery on the message/call detail page (`/view/messages/{sid}` shows a "Callback delivery" summary if any webhooks were sent for that record). For raw rows, query the SQLite DB directly: `sqlite3 /tmp/sms-mock.db 'SELECT * FROM callback_logs;'`
 
 **Phone number validation errors:**
 - Use E.164 format: `+15551234567` (with `+` and country code)
-- Or set `validation.validate_phone_format: false`
-- Note: `+1555...` numbers (NANP fictional-use) are **rejected by libphonenumber** when `validate_phone_format: true`. Use real-looking numbers like `+12025550100` (DC area code) for testing with strict validation, or disable the format check for permissive testing.
+- Or set `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=false`
+- Note: `+1555...` numbers (NANP fictional-use) are **rejected by libphonenumber** when phone format validation is on. Use real-looking numbers like `+12025550100` (DC area code) for testing with strict validation, or disable the format check for permissive testing.
 
 ## License
 

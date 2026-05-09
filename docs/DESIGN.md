@@ -94,7 +94,7 @@ type Provider interface {
 
     // Behavior determination — used by the dispatcher to pick a status flow.
     IsKnownNumber(toNumber string) bool   // in registered/failure list?
-    ShouldSucceed(toNumber string) bool   // failure → false; registered → true; else default_behavior
+    ShouldSucceed(toNumber string) bool   // failure → false; success → true (only called when IsKnownNumber)
 }
 ```
 
@@ -218,57 +218,36 @@ CREATE TABLE callback_logs (
 ```
 
 ### 3.6 Config Loader
-**Responsibility**: Load and validate server configuration
+**Responsibility**: Load and validate server configuration from environment variables
 
-**YAML Structure**:
-```yaml
-server:
-  host: 0.0.0.0
-  port: 8080
-  timezone: UTC  # Timezone for UI date display (e.g., America/New_York, Asia/Tokyo)
+**Environment variables**:
 
-provider: twilio  # Current active provider
+Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific settings use `SMS_MOCK_TWILIO_`.
 
-twilio:
-  account_sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-  auth_token: your_auth_token_here
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `SMS_MOCK_HOST` | `0.0.0.0` | |
+| `SMS_MOCK_PORT` | `8080` | |
+| `SMS_MOCK_TIMEZONE` | `UTC` | UI date display |
+| `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite path |
+| `SMS_MOCK_PROVIDER` | `twilio` | only `twilio` is supported today |
+| `SMS_MOCK_TWILIO_ACCOUNT_SID` | (empty) | required when REQUIRE_AUTH=true |
+| `SMS_MOCK_TWILIO_AUTH_TOKEN` | (empty) | required when REQUIRE_AUTH=true |
+| `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` | (empty) | comma-separated; queued → sent → delivered |
+| `SMS_MOCK_TWILIO_FAILURE_NUMBERS` | (empty) | comma-separated; queued → failed |
+| `SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS` | (empty) | comma-separated; From-allowlist |
+| `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | |
+| `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | E.164 check via libphonenumber |
+| `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | |
+| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | |
+| `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | between status transitions |
+| `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | total attempts |
+| `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | between retries |
 
-  # Validation settings
-  validation:
-    require_auth: true              # Validate auth token
-    validate_phone_format: true     # Check E.164 phone number format
-    check_from_numbers: true        # Require From number in allowed list
-    require_parameters: true        # Validate required parameters
-
-  # Behavior for numbers not in registered_numbers or failure_numbers
-  # Options: "success" or "failure"
-  default_behavior: success
-
-  registered_numbers:
-    # Numbers that will successfully deliver (queued -> sent -> delivered)
-    - "+15551234567"
-    - "+15559876543"
-
-  allowed_from_numbers:
-    - "+15550000001"
-    - "+15550000002"
-
-  # Numbers that simulate failures
-  failure_numbers:
-    - "+15559999999"  # Always fails
-
-  callbacks:
-    enabled: true
-    delay_seconds: 2  # Simulate delivery delay
-    retry_attempts: 3
-    retry_delay_seconds: 5
-
-database:
-  path: "./data/mock_server.db"
-```
+The loader applies defaults, overlays env vars, then validates: provider must be `twilio`; timezone must parse; if `REQUIRE_AUTH=true`, both `ACCOUNT_SID` and `AUTH_TOKEN` must be set to non-placeholder values. List values are comma-separated; whitespace is trimmed and empty entries are dropped.
 
 > Note: in the Go implementation, templates are embedded into the binary via
-> `//go:embed`, so there is no `templates.path` config field. To customize
+> `//go:embed`, so there is no template-path config field. To customize
 > templates, edit the files under `templates/` and rebuild the binary.
 
 #### Number Validation Behavior
@@ -277,36 +256,23 @@ The server determines message/call success based on the destination number (`To`
 
 | Number Location | Behavior | Status Flow | Use Case |
 |----------------|----------|-------------|----------|
-| In `failure_numbers` | Always fails | queued → failed | Test error handling |
-| In `registered_numbers` | Always succeeds | queued → sent → delivered | Test success path |
-| Not in either list | Uses `default_behavior` config | Depends on config | Flexible testing |
+| In `SMS_MOCK_TWILIO_FAILURE_NUMBERS` | Always fails | queued → failed | Test error handling |
+| In `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` | Always succeeds | queued → sent → delivered | Test success path |
+| Not in either list | Stays queued forever | queued (no progression) | "Callbacks off" mode |
 
-**When `default_behavior: success`** (recommended for development):
-- Any number not explicitly in `failure_numbers` will succeed
-- Allows testing with arbitrary phone numbers
-- Only need to list numbers that should fail
+The failure list takes precedence if a number appears in both. Numbers not in either list are deliberately stuck at `queued` — the dispatcher short-circuits on `!IsKnownNumber` so no status transitions are scheduled and no callbacks fire. This is also how the server runs in "callbacks-effectively-off" mode: leave both lists empty.
 
-**When `default_behavior: failure`**:
-- Only numbers in `registered_numbers` will succeed
-- Stricter validation, mimics production constraints
-- Useful for testing registration flows
-
-> **Important:** numbers NOT in `registered_numbers` AND NOT in `failure_numbers` stay queued indefinitely with no callbacks fired — independent of `default_behavior`. This matches the Python implementation's dispatcher behavior. Don't be surprised when an arbitrary unknown number doesn't progress past `queued`.
-
-> **libphonenumber note:** `+1555...` numbers (NANP fictional-use) are flagged invalid by libphonenumber when `validate_phone_format: true`. The example numbers in this doc are illustrative; for strict testing, use real-looking numbers (e.g. `+12025550100` — Washington DC area code).
+> **libphonenumber note:** `+1555...` numbers (NANP fictional-use) are flagged invalid by libphonenumber when `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true`. For strict testing, use real-looking numbers (e.g. `+12025550100` — Washington DC area code).
 
 **Examples**:
 
-```yaml
-# Permissive mode (default_behavior: success)
-# - "+15551111111" → Success (not in either list, defaults to success)
-# - "+15551234567" → Success (in registered_numbers)
-# - "+15559999999" → Failure (in failure_numbers)
+```sh
+SMS_MOCK_TWILIO_SUCCESS_NUMBERS="+15551234567,+15559876543"
+SMS_MOCK_TWILIO_FAILURE_NUMBERS="+15559999999"
 
-# Strict mode (default_behavior: failure)
-# - "+15551111111" → Failure (not in either list, defaults to failure)
-# - "+15551234567" → Success (in registered_numbers)
-# - "+15559999999" → Failure (in failure_numbers)
+# - "+15551111111" → Stays queued forever (in neither list)
+# - "+15551234567" → Success (in success list)
+# - "+15559999999" → Failure (in failure list)
 ```
 
 #### Error Handling & Validation
@@ -471,15 +437,15 @@ swaps and confirmations. No client JS framework.
       → Return 401 if invalid
    b. Validate required parameters (if require_parameters: true)
       → Return 400 if From/To/Body missing
-   c. Validate phone number format (if validate_phone_format: true)
+   c. Validate phone number format (if VALIDATE_PHONE_FORMAT=true)
       → Return 400 if invalid E.164 format
-   d. Check From number (if check_from_numbers: true)
-      → Return 400 if not in allowed_from_numbers
+   d. Check From number (if CHECK_FROM_NUMBERS=true)
+      → Return 400 if not in ALLOWED_FROM_NUMBERS
 
 3. API Route → Determine to_number behavior:
-   - If in failure_numbers → Mark for failure
-   - If in registered_numbers → Mark for success
-   - Otherwise → Use default_behavior setting
+   - If in FAILURE_NUMBERS → Mark for failure
+   - If in SUCCESS_NUMBERS → Mark for success
+   - Otherwise → Mark unknown (no progression)
 
 4. Provider Adapter → Generate message_sid
 
@@ -490,14 +456,14 @@ swaps and confirmations. No client JS framework.
 7. Response → Return to client
 
 8. Callback Handler → Schedule status flow based on `IsKnownNumber(To)`:
-   - To in `registered_numbers` → queued → sent → delivered (success flow)
-   - To in `failure_numbers` → queued → failed
+   - To in `SUCCESS_NUMBERS` → queued → sent → delivered (success flow)
+   - To in `FAILURE_NUMBERS` → queued → failed
    - To in NEITHER list → no progression, stays queued forever (no callbacks fired)
 
-9. For each scheduled status (after `delay_seconds` increments):
+9. For each scheduled status (after CALLBACK_DELAY_SECONDS increments):
    - Update the message status in DB
    - Persist a `delivery_events` row
-   - If `StatusCallback` URL was provided AND `callbacks.enabled: true`: enqueue an HTTP POST to the URL via the worker pool
+   - If `StatusCallback` URL was provided: enqueue an HTTP POST to the URL via the worker pool
 
 10. Worker pool → POST callback (with retries on non-2xx or transport error); each attempt logs a `callback_logs` row.
 ```
@@ -557,7 +523,6 @@ swaps and confirmations. No client JS framework.
 ├── scripts/                          # seed_data.sh (curl-based sample data)
 ├── docs/                             # DESIGN.md + plans
 ├── .github/workflows/                # CI (test + lint) + release (goreleaser)
-├── config.yaml                       # Server configuration
 ├── Makefile                          # Build / test / docker targets
 ├── Dockerfile                        # Multi-stage; static binary on distroless/static
 ├── docker-compose.yml
@@ -568,7 +533,7 @@ swaps and confirmations. No client JS framework.
 
 Note: SQLite database is stored in a Docker volume (`sms-mock-data`) for persistence.
 Templates and static assets are baked into the binary at build time via `//go:embed`,
-so the runtime container needs only `config.yaml` and a writable `data/` dir.
+so the runtime container needs only env-var configuration and a writable `data/` dir.
 
 ### 5.2 Response Template Example
 **File**: `app/templates/responses/twilio/send_sms_success.json`
@@ -756,11 +721,11 @@ The mock server is designed to work seamlessly with official Twilio SDKs by usin
 #### Authentication Method
 
 All Twilio SDKs use HTTP Basic Authentication:
-- **Username**: Account SID (configured in `config.yaml`)
-- **Password**: Auth Token (configured in `config.yaml`)
+- **Username**: Account SID (configured via `SMS_MOCK_TWILIO_ACCOUNT_SID`)
+- **Password**: Auth Token (configured via `SMS_MOCK_TWILIO_AUTH_TOKEN`)
 - **Header**: `Authorization: Basic <base64(account_sid:auth_token)>`
 
-The mock server validates this if `validation.require_auth: true`.
+The mock server validates this if `SMS_MOCK_TWILIO_REQUIRE_AUTH=true` (default).
 
 #### URL Structure Compatibility
 
@@ -957,8 +922,13 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config.yaml:/app/config.yaml
       - ./data:/app/data
+    environment:
+      - SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here
+      - SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543
+      - SMS_MOCK_TWILIO_FAILURE_NUMBERS=+15559999999
+      - SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS=+15550000001,+15550000002
     networks:
       - app-network
 
@@ -1018,19 +988,18 @@ TWILIO_API_BASE_URL=http://localhost:8080
 ### 7.1 Docker Container
 **Dockerfile Strategy**: Two-stage build
 - Stage 1 (`golang:alpine`): Compile a fully static binary with `CGO_ENABLED=0`. Templates and static assets are baked in via `//go:embed` at compile time.
-- Stage 2 (`gcr.io/distroless/static:nonroot`): Copy in the binary and `config.yaml`. Final image is ~17–20 MB. No shell, no curl, no package manager — only the binary, default config, and a non-root user.
+- Stage 2 (`gcr.io/distroless/static:nonroot`): Copy in the binary. Final image is ~17–20 MB. No shell, no curl, no package manager — only the binary and a non-root user. All configuration is supplied via env vars at runtime.
 
 **Exposed Ports**:
 - `8080` - HTTP
 
 **Volumes**:
-- `/app/config.yaml` - Configuration file (overrides the one baked into the image)
-- `/app/data` - SQLite database (persisted across restarts)
+- `/app/data` - SQLite database (persisted across restarts when `SMS_MOCK_DB_PATH` points inside this dir)
 
 Templates are embedded into the binary; there is no `/app/templates` mount.
 
 **Environment Variables**:
-- `CONFIG_PATH` - Override config file location (default: `/app/config.yaml`)
+- All `SMS_MOCK_*` settings (see §3.6 Config Loader)
 - `LOG_LEVEL` - Logging verbosity (`DEBUG`, `INFO`, `WARN`/`WARNING`, `ERROR`; default `INFO`)
 
 ### 7.2 Docker Compose Example
@@ -1043,11 +1012,9 @@ services:
     container_name: sms-mock-server
     ports:
       - "8080:8080"
-    volumes:
-      - ./config.yaml:/app/config.yaml
-      - ./data:/app/data
     environment:
       - LOG_LEVEL=INFO
+      - SMS_MOCK_TWILIO_REQUIRE_AUTH=false
 ```
 
 **With Application Stack:**
@@ -1058,11 +1025,10 @@ services:
     container_name: sms-mock-server
     ports:
       - "8080:8080"
-    volumes:
-      - ./config.yaml:/app/config.yaml
-      - ./data:/app/data
     environment:
       - LOG_LEVEL=INFO
+      - SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here
     networks:
       - app-network
     # Note: the distroless/static base image ships no shell or curl, so the
@@ -1093,14 +1059,14 @@ To add a new provider (e.g., MessageBird, Vonage):
 
 1. Create new adapter package at `app/provider/{provider_name}/` implementing `provider.Provider`
 2. Add provider-specific templates under `app/templates/responses/{provider_name}/` and `app/templates/errors/{provider_name}/`
-3. Update `config.yaml` with provider configuration
+3. Add provider-specific env vars (e.g. `SMS_MOCK_{PROVIDER}_*`) and a struct in `app/config/config.go` populated by `applyEnv`
 4. Register provider in the factory map in `app/main.go`
 5. Rebuild the binary (templates are embedded)
 
 ### 8.2 Custom Response Behavior
 - Edit JSON templates to modify response structure
 - Add conditional logic in templates based on request parameters
-- Configure number-based routing (success/failure) in `config.yaml`
+- Configure number-based routing (success/failure) via `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` / `SMS_MOCK_TWILIO_FAILURE_NUMBERS`
 
 ### 8.3 Future Enhancements
 - **HTTPS support** with self-signed certificates (optional for production-like testing)
