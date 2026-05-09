@@ -235,9 +235,8 @@ func TestFavicon(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ts.Favicon(rec, httptest.NewRequest("GET", "/favicon.ico", nil))
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "image/svg+xml", rec.Header().Get("Content-Type"))
-	assert.True(t, strings.HasPrefix(rec.Body.String(), "<svg"), "body doesn't start with <svg: %.40s", rec.Body.String())
+	require.Equal(t, http.StatusMovedPermanently, rec.Code)
+	assert.Equal(t, "/static/img/icon.svg", rec.Header().Get("Location"))
 }
 
 func TestFavicon_RoutedThroughHandler(t *testing.T) {
@@ -245,7 +244,8 @@ func TestFavicon_RoutedThroughHandler(t *testing.T) {
 	h := ts.Handler()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/favicon.ico", nil))
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusMovedPermanently, rec.Code)
+	assert.Equal(t, "/static/img/icon.svg", rec.Header().Get("Location"))
 }
 
 // --- ensure middleware doesn't break aux endpoints ---
@@ -257,14 +257,15 @@ func TestAuxEndpoints_DontPanic(t *testing.T) {
 	cases := []struct {
 		method, path string
 		body         string
+		wantStatus   int
 	}{
-		{"GET", "/health", ""},
-		{"GET", "/favicon.ico", ""},
-		{"POST", "/clear/messages", ""},
-		{"POST", "/clear/calls", ""},
-		{"POST", "/clear/callbacks", ""},
-		{"POST", "/clear/all", ""},
-		{"POST", "/callback-test", "MessageSid=SM1"},
+		{"GET", "/health", "", http.StatusOK},
+		{"GET", "/favicon.ico", "", http.StatusMovedPermanently},
+		{"POST", "/clear/messages", "", http.StatusOK},
+		{"POST", "/clear/calls", "", http.StatusOK},
+		{"POST", "/clear/callbacks", "", http.StatusOK},
+		{"POST", "/clear/all", "", http.StatusOK},
+		{"POST", "/callback-test", "MessageSid=SM1", http.StatusOK},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
@@ -273,6 +274,6 @@ func TestAuxEndpoints_DontPanic(t *testing.T) {
 		}
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code, "%s %s", tc.method, tc.path)
+		assert.Equal(t, tc.wantStatus, rec.Code, "%s %s", tc.method, tc.path)
 	}
 }
