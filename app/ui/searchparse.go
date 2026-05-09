@@ -136,30 +136,11 @@ func (q Query) HasTag(name string) bool {
 	return false
 }
 
-// ToggleTag returns the q string that would result from clicking the given
-// tag in the sidebar: removes it if present, appends if absent. Multi-select
-// helper, kept for completeness even though SelectTag is what the sidebar
-// uses today.
-func (q Query) ToggleTag(name string) string {
-	tags := make([]string, 0, len(q.Tags)+1)
-	found := false
-	for _, t := range q.Tags {
-		if t == name {
-			found = true
-			continue
-		}
-		tags = append(tags, t)
-	}
-	if !found {
-		tags = append(tags, name)
-	}
-	return BuildQuery(q.Text, tags)
-}
-
-// SelectTag is the single-select counterpart of ToggleTag. Clicking a tag
-// that isn't currently the only filter replaces the entire tag set with just
-// that name. Clicking the already-active tag clears the filter (returns the
-// query with no tags). Free-text terms in q are preserved either way.
+// SelectTag returns the q string that would result from clicking a tag in
+// the sidebar (single-select): clicking a tag that isn't currently the only
+// filter replaces the entire tag set with just that name. Clicking the
+// already-active tag clears the filter. Free-text terms in q are preserved
+// either way.
 func (q Query) SelectTag(name string) string {
 	if len(q.Tags) == 1 && q.Tags[0] == name {
 		return BuildQuery(q.Text, nil) // toggle-off

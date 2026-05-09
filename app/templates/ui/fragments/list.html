@@ -1,5 +1,5 @@
 <div id="record-list" class="record-list"
-     hx-get="/ui/fragments/list?type={{ .Type }}{{ if .Q }}&q={{ .Q }}{{ end }}{{ if .Status }}&status={{ .Status }}{{ end }}&page={{ .Page }}"
+     hx-get="/ui/fragments/list?type={{ .Type }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}&page={{ .Page }}"
      hx-trigger="every 3s"
      hx-target="this"
      hx-swap="outerHTML">
@@ -11,9 +11,9 @@
         </span>
         {{ if gt .TotalPages 1 }}
         <span class="list-pagination">
-            {{ if gt .Page 1 }}<a href="?{{ if eq .Type "calls" }}{{ end }}page={{ sub .Page 1 }}{{ if .Q }}&q={{ .Q }}{{ end }}{{ if .Status }}&status={{ .Status }}{{ end }}">‹ prev</a>{{ end }}
+            {{ if gt .Page 1 }}<a href="?page={{ sub .Page 1 }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}">‹ prev</a>{{ end }}
             <span>{{ .Page }} / {{ .TotalPages }}</span>
-            {{ if lt .Page .TotalPages }}<a href="?page={{ add .Page 1 }}{{ if .Q }}&q={{ .Q }}{{ end }}{{ if .Status }}&status={{ .Status }}{{ end }}">next ›</a>{{ end }}
+            {{ if lt .Page .TotalPages }}<a href="?page={{ add .Page 1 }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}">next ›</a>{{ end }}
         </span>
         {{ end }}
     </div>

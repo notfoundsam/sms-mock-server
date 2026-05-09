@@ -77,25 +77,3 @@ func TestQuerySelectTag(t *testing.T) {
 	q = ParseQuery("")
 	assert.Equal(t, `tag:"two words"`, q.SelectTag("two words"))
 }
-
-func TestQueryToggleTag(t *testing.T) {
-	// Add to query without that tag
-	q := ParseQuery("verify tag:auth")
-	assert.Equal(t, "verify tag:auth tag:high", q.ToggleTag("high"))
-
-	// Remove existing tag, leaving free text and any others
-	q = ParseQuery("verify tag:auth tag:high")
-	assert.Equal(t, "verify tag:high", q.ToggleTag("auth"))
-
-	// Toggle off the only tag → just free text
-	q = ParseQuery("verify tag:auth")
-	assert.Equal(t, "verify", q.ToggleTag("auth"))
-
-	// Toggle off the only tag, no free text → empty string
-	q = ParseQuery("tag:auth")
-	assert.Empty(t, q.ToggleTag("auth"))
-
-	// Tag with spaces gets quoted
-	q = ParseQuery("")
-	assert.Equal(t, `tag:"two words"`, q.ToggleTag("two words"))
-}

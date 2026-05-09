@@ -428,7 +428,7 @@ make run
 
 Test coverage:
 - **Per-package unit tests** (`app/<pkg>/*_test.go`) using stdlib `testing` + `testify`. Includes table-driven validation matrices, fakes for storage / HTTP / clock.
-- **End-to-end smoke test** (`app/main_test.go`) builds the full stack via `httptest.NewServer` and exercises POST Messages → persistence → `/health` → dashboard → static asset → `/clear/all`.
+- **End-to-end smoke test** (`app/main_test.go`) builds the full stack via `httptest.NewServer` and exercises POST Messages → persistence → `/health` → messages page → static asset → `/clear/all`.
 - All HTTP endpoints (Twilio Messages/Calls, `/health`, `/clear/*`, `/callback-test`, `/favicon.ico`, mailbox/detail pages, UI fragments) are covered by handler-level tests in `app/httpapi/` and `app/ui/`.
 
 ## Project Structure
