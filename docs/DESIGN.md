@@ -215,6 +215,12 @@ CREATE TABLE callback_logs (
     attempt_number INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Indexes added in migration 004 to keep the retention pruner off full
+-- table scans (see §3.7). created_at is the ordering key for both the
+-- count-based and age-based pruning queries.
+CREATE INDEX idx_messages_created_at ON messages(created_at);
+CREATE INDEX idx_calls_created_at    ON calls(created_at);
 ```
 
 ### 3.6 Config Loader
@@ -243,6 +249,10 @@ Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific 
 | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | between status transitions |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | total attempts |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | between retries |
+| `SMS_MOCK_MAX_MESSAGES` | `500` | cap on messages table; `0` disables |
+| `SMS_MOCK_MAX_CALLS` | `500` | cap on calls table; `0` disables |
+| `SMS_MOCK_MAX_AGE` | (empty) | TTL for both tables; `<int>h` or `<int>d` (e.g. `72h`, `3d`); empty disables |
+| `SMS_MOCK_HIDE_DELETE_ALL_BUTTON` | `false` | UI-only; hides the bulk-delete button. Backend endpoints remain functional. |
 
 The loader applies defaults, overlays env vars, then validates: provider must be `twilio`; timezone must parse; if `REQUIRE_AUTH=true`, both `ACCOUNT_SID` and `AUTH_TOKEN` must be set to non-placeholder values. List values are comma-separated; whitespace is trimmed and empty entries are dropped.
 
@@ -277,17 +287,17 @@ SMS_MOCK_TWILIO_FAILURE_NUMBERS="+15559999999"
 
 #### Error Handling & Validation
 
-The server emulates Twilio's error responses to help developers test error handling in their applications. Error validation is configurable via the `validation` settings.
+The server emulates Twilio's error responses to help developers test error handling in their applications. Each validation step is gated on an env var (see §3.6).
 
 **Supported Error Scenarios:**
 
-| Error Type | HTTP Status | Twilio Error Code | Trigger | Configurable |
-|-----------|-------------|-------------------|---------|--------------|
-| Authentication Failed | 401 | 20003 | Invalid/missing auth token | `require_auth` |
-| Invalid Account SID | 401 | 20003 | Wrong account SID in URL | `require_auth` |
-| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | `require_parameters` |
-| Invalid Phone Number | 400 | 21211 | Invalid E.164 format | `validate_phone_format` |
-| Invalid From Number | 400 | 21606 | `From` not in allowed list | `check_from_numbers` |
+| Error Type | HTTP Status | Twilio Error Code | Trigger | Toggle |
+|-----------|-------------|-------------------|---------|--------|
+| Authentication Failed | 401 | 20003 | Invalid/missing auth token | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
+| Invalid Account SID | 401 | 20003 | Wrong account SID in URL | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
+| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` |
+| Invalid Phone Number | 400 | 21211 | Invalid E.164 format | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` |
+| Invalid From Number | 400 | 21606 | `From` not in allowed list | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` |
 
 **Error Response Format:**
 
@@ -304,33 +314,40 @@ Error responses match Twilio's standard error format:
 
 **Validation Order:**
 
-1. Authentication (if `require_auth: true`)
-2. Required parameters (if `require_parameters: true`)
-3. Phone number format (if `validate_phone_format: true`)
-4. From number allowed list (if `check_from_numbers: true`)
+1. Authentication (if `SMS_MOCK_TWILIO_REQUIRE_AUTH=true`)
+2. Required parameters (if `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true`)
+3. Phone number format (if `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true`)
+4. From number allowed list (if `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=true`)
 5. Determine success/failure based on To number
 
 **Flexible Validation:**
 
-Each validation can be toggled on/off in config for different testing scenarios:
+Each toggle defaults to `true`. Setting any to `false` skips that step — useful for quick testing without setting up real credentials or full E.164 numbers:
 
-```yaml
-# Strict validation (production-like)
-validation:
-  require_auth: true
-  validate_phone_format: true
-  check_from_numbers: true
-  require_parameters: true
-
-# Permissive (quick testing)
-validation:
-  require_auth: false
-  validate_phone_format: false
-  check_from_numbers: false
-  require_parameters: true  # Keep minimal validation
+```sh
+# Permissive (quick testing): turn off everything except parameter presence
+SMS_MOCK_TWILIO_REQUIRE_AUTH=false
+SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=false
+SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=false
+# SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true   # default; keeps From/To/Body required
 ```
 
-### 3.7 Web UI
+### 3.7 Retention Pruner
+
+**Responsibility**: Bound the SQLite DB by enforcing per-table row caps and an optional age-based TTL on messages and calls.
+
+**Settings** live under `config.Limits` (env vars in §3.6):
+- `MaxMessages`, `MaxCalls` — independent caps; oldest rows pruned first when exceeded; `0` disables.
+- `MaxAge` — single TTL applied to both tables; rows with `created_at < now - MaxAge` are deleted. Zero disables.
+- `HideDeleteAllButton` — UI-only; suppresses the sidebar "Delete all" button (backend endpoints unchanged).
+
+**Mechanism**: A single goroutine in `app/prune` runs every 60 seconds. One immediate pass on startup so an over-cap DB gets trimmed without waiting a minute. The pruner consults `config.Limits` and calls `storage.Store`'s four `PruneXByCount` / `PruneXByAge` methods. Errors are logged at WARN; transient SQLite contention doesn't abort the loop.
+
+**Constructor short-circuit**: `prune.New` returns `nil` when every limit is disabled — `main.go` skips wiring the goroutine entirely, so projects with retention disabled don't pay any cost.
+
+**SQL**: count-based prune uses `SELECT sid FROM <table> ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET <cap>` to find rows beyond the cap, then deletes them along with their `delivery_events` in a single transaction. Age-based prune uses `WHERE created_at < <cutoff>`. Both rely on the `idx_{messages,calls}_created_at` indexes added in migration 004 to avoid full scans. `callback_logs` rows (audit trail) and tag links (FK cascade) are not touched.
+
+### 3.8 Web UI
 
 **Responsibility**: Provide a mailbox-style interface for inspecting received messages and calls.
 
@@ -433,14 +450,14 @@ swaps and confirmations. No client JS framework.
 1. Client → POST /2010-04-01/Accounts/{sid}/Messages.json
 
 2. API Route → Validation (configurable):
-   a. Check authentication (if require_auth: true)
+   a. Check authentication (if SMS_MOCK_TWILIO_REQUIRE_AUTH=true)
       → Return 401 if invalid
-   b. Validate required parameters (if require_parameters: true)
+   b. Validate required parameters (if SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true)
       → Return 400 if From/To/Body missing
-   c. Validate phone number format (if VALIDATE_PHONE_FORMAT=true)
+   c. Validate phone number format (if SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true)
       → Return 400 if invalid E.164 format
-   d. Check From number (if CHECK_FROM_NUMBERS=true)
-      → Return 400 if not in ALLOWED_FROM_NUMBERS
+   d. Check From number (if SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=true)
+      → Return 400 if not in SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS
 
 3. API Route → Determine to_number behavior:
    - If in FAILURE_NUMBERS → Mark for failure
@@ -505,12 +522,13 @@ swaps and confirmations. No client JS framework.
 ├── app/                              # all Go source (flat layout)
 │   ├── main.go                       # entrypoint
 │   ├── embedded.go                   # //go:embed templates + static
-│   ├── config/                       # YAML config loader + validation
+│   ├── config/                       # env-var config loader + validation
 │   ├── storage/                      # SQLite store (modernc.org/sqlite, no CGO)
 │   ├── provider/                     # Provider interface + ValidationError
 │   │   └── twilio/                   # Twilio adapter
 │   ├── template/                     # text/template + html/template engine
 │   ├── callback/                     # async dispatcher (worker pool, Clock interface)
+│   ├── prune/                        # background retention sweeper (60s tick)
 │   ├── httpapi/                      # Twilio routes, /health, /clear/*, middleware
 │   ├── ui/                           # Mailbox pages, detail views, HTMX fragments
 │   ├── clock/                        # Clock interface (real + fake for tests)
@@ -524,7 +542,8 @@ swaps and confirmations. No client JS framework.
 ├── docs/                             # DESIGN.md + plans
 ├── .github/workflows/                # CI (test + lint) + release (goreleaser)
 ├── Makefile                          # Build / test / docker targets
-├── Dockerfile                        # Multi-stage; static binary on distroless/static
+├── Dockerfile                        # Multi-stage source build (used by docker compose)
+├── Dockerfile.release                # Single-stage prebuilt-binary copy (used by goreleaser)
 ├── docker-compose.yml
 ├── .golangci.yml                     # Linter config (41 linters)
 ├── .goreleaser.yml                   # Release automation
@@ -986,9 +1005,11 @@ TWILIO_API_BASE_URL=http://localhost:8080
 ## 7. Deployment
 
 ### 7.1 Docker Container
-**Dockerfile Strategy**: Two-stage build
-- Stage 1 (`golang:alpine`): Compile a fully static binary with `CGO_ENABLED=0`. Templates and static assets are baked in via `//go:embed` at compile time.
-- Stage 2 (`gcr.io/distroless/static:nonroot`): Copy in the binary. Final image is ~17–20 MB. No shell, no curl, no package manager — only the binary and a non-root user. All configuration is supplied via env vars at runtime.
+**Two Dockerfiles serve different paths:**
+- `Dockerfile` (local dev / `docker compose up --build`): multi-stage. Stage 1 (`golang:1.25-alpine`) compiles a fully static binary with `CGO_ENABLED=0`; stage 2 (`gcr.io/distroless/static:nonroot`) copies the binary in. Templates and static assets are embedded via `//go:embed` at compile time.
+- `Dockerfile.release` (used by goreleaser): single-stage. Goreleaser cross-compiles the binary per-arch outside Docker and places it in the build context; the Dockerfile just copies it onto `gcr.io/distroless/static:nonroot`. Selected via `dockers[].dockerfile` in `.goreleaser.yml`.
+
+Final image (both paths) is ~17–20 MB. No shell, no curl, no package manager — only the binary and a non-root user. All configuration is supplied via env vars at runtime.
 
 **Exposed Ports**:
 - `8080` - HTTP
@@ -1093,7 +1114,7 @@ To add a new provider (e.g., MessageBird, Vonage):
 | Embedded Assets | `embed.FS` | Templates + static files baked into the binary |
 | UI | HTML + HTMX | Simple, no heavy frontend framework |
 | Containerization | Docker (`gcr.io/distroless/static:nonroot`) | Minimal runtime, ~17–20 MB image |
-| Config Format | YAML (`gopkg.in/yaml.v3`) | Human-readable, easy to edit |
+| Config Format | Environment variables (stdlib `os.Getenv`) | 12-factor; no config file to mount |
 | Response Format | JSON | Standard API format |
 
 ## 10. Development Approach

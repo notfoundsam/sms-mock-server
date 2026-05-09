@@ -87,6 +87,14 @@ The server is configured entirely via `SMS_MOCK_*` environment variables. Common
 | `SMS_MOCK_TIMEZONE` | `UTC` | Timezone for UI date display (e.g. `America/New_York`, `Asia/Tokyo`) |
 | `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite DB path. Default is ephemeral; mount a host directory and override to persist. |
 | `SMS_MOCK_PROVIDER` | `twilio` | Provider identifier. Only `twilio` is supported today. |
+| `SMS_MOCK_MAX_MESSAGES` | `500` | Cap on stored messages; oldest are pruned when exceeded. `0` disables. |
+| `SMS_MOCK_MAX_CALLS` | `500` | Cap on stored calls; oldest are pruned when exceeded. `0` disables. |
+| `SMS_MOCK_MAX_AGE` | (empty) | TTL for messages and calls. Format `<int>h` or `<int>d` (e.g. `72h`, `3d`). Empty disables the TTL. |
+| `SMS_MOCK_HIDE_DELETE_ALL_BUTTON` | `false` | Hides the "Delete all" button in the sidebar. Backend `/clear/*` endpoints remain functional. |
+
+#### Retention pruner
+
+When any of `SMS_MOCK_MAX_MESSAGES`, `SMS_MOCK_MAX_CALLS`, or `SMS_MOCK_MAX_AGE` is set, a background pruner runs every 60 seconds and trims the messages and calls tables. An immediate pass runs at startup so an over-capacity DB gets trimmed without waiting a minute. Pruning never touches `callback_logs` (audit trail) — it only deletes messages, calls, and their related `delivery_events`.
 
 ### Twilio settings
 
@@ -139,7 +147,7 @@ Earlier versions of this project used a YAML config file. The mapping to env var
 **Removed settings** (with no replacement):
 
 - `twilio.default_behavior` — was effectively dead code (the dispatcher short-circuits on unknown numbers, so the field never observably affected outcomes). Numbers either appear in a list and resolve to that list's outcome, or they don't and stay queued.
-- `twilio.callbacks.enabled` — replaced by the implicit rule that empty number lists suppress all status progression and callbacks. Note: the old combination "callbacks.enabled=false + populated number lists" (status flow runs in the UI but outbound HTTP callbacks are suppressed) no longer exists. Empty lists is now the only way to suppress callbacks, and it also suppresses status progression. If you relied on the old combination for testing UI-visible status changes without hitting external endpoints, you'll need to point `StatusCallback` at a sink you control instead.
+- `twilio.callbacks.enabled` — removed. Callbacks now fire whenever the request supplies a `StatusCallback` URL *and* the destination number is in `SUCCESS_NUMBERS` or `FAILURE_NUMBERS`. To suppress all callbacks server-wide, leave both lists empty (no number progresses past `queued`, so no callbacks fire). The old combination "callbacks.enabled=false + populated lists" (status flow visible in the UI but no outbound HTTP) no longer has a server-side switch — the workaround is to point `StatusCallback` at a sink you control (e.g. the built-in `/callback-test`).
 
 ## SDK Integration
 
@@ -450,12 +458,13 @@ sms-mock-server/
 │   ├── main.go                # entrypoint
 │   ├── main_test.go           # end-to-end smoke test (httptest.NewServer)
 │   ├── embedded.go            # //go:embed templates + static
-│   ├── config/                # YAML config loader + validation
+│   ├── config/                # env-var config loader + validation
 │   ├── storage/               # SQLite store, embedded migrations
 │   ├── provider/              # Provider interface + types (ValidationError, etc.)
 │   │   └── twilio/            # Twilio adapter (auth, validation, outcome)
 │   ├── template/              # text/template + html/template engine
 │   ├── callback/              # Async dispatcher: worker pool + Clock-driven retries
+│   ├── prune/                 # Background retention sweeper (60s tick)
 │   ├── httpapi/               # Twilio API routes, /health, /clear/*, middleware
 │   ├── ui/                    # Mailbox pages, detail views, HTMX fragment handlers
 │   ├── clock/                 # Clock interface (real + fake for tests)
@@ -472,7 +481,8 @@ sms-mock-server/
 │   └── plans/                 # Implementation plans (history)
 ├── .github/workflows/         # CI (test + lint + shellcheck) + release (goreleaser)
 ├── Makefile                   # Build / test / docker targets
-├── Dockerfile                 # Multi-stage; static binary on distroless/static
+├── Dockerfile                 # Multi-stage source build (used by docker compose)
+├── Dockerfile.release          # Single-stage prebuilt-binary copy (used by goreleaser)
 ├── docker-compose.yml
 ├── .golangci.yml              # Linter config (41 linters)
 ├── .goreleaser.yml            # Release automation (binaries + Docker Hub image)

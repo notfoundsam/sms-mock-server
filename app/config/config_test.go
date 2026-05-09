@@ -3,6 +3,7 @@ package config
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,10 @@ func clearEnv(t *testing.T) {
 		"SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS",
 		"SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS",
 		"SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS",
+		"SMS_MOCK_MAX_MESSAGES",
+		"SMS_MOCK_MAX_CALLS",
+		"SMS_MOCK_MAX_AGE",
+		"SMS_MOCK_HIDE_DELETE_ALL_BUTTON",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -72,6 +77,10 @@ func TestLoad_appliesDefaults(t *testing.T) {
 	assert.Empty(t, cfg.Twilio.SuccessNumbers)
 	assert.Empty(t, cfg.Twilio.FailureNumbers)
 	assert.Empty(t, cfg.Twilio.AllowedFromNumbers)
+	assert.Equal(t, 500, cfg.Limits.MaxMessages)
+	assert.Equal(t, 500, cfg.Limits.MaxCalls)
+	assert.Equal(t, time.Duration(0), cfg.Limits.MaxAge)
+	assert.False(t, cfg.Limits.HideDeleteAllButton)
 }
 
 func TestLoad_envOverridesDefaults(t *testing.T) {
@@ -93,6 +102,10 @@ func TestLoad_envOverridesDefaults(t *testing.T) {
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS", "1")
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS", "5")
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS", "10")
+	t.Setenv("SMS_MOCK_MAX_MESSAGES", "100")
+	t.Setenv("SMS_MOCK_MAX_CALLS", "200")
+	t.Setenv("SMS_MOCK_MAX_AGE", "72h")
+	t.Setenv("SMS_MOCK_HIDE_DELETE_ALL_BUTTON", "true")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -113,6 +126,10 @@ func TestLoad_envOverridesDefaults(t *testing.T) {
 	assert.Equal(t, 1, cfg.Twilio.Callbacks.DelaySeconds)
 	assert.Equal(t, 5, cfg.Twilio.Callbacks.RetryAttempts)
 	assert.Equal(t, 10, cfg.Twilio.Callbacks.RetryDelaySeconds)
+	assert.Equal(t, 100, cfg.Limits.MaxMessages)
+	assert.Equal(t, 200, cfg.Limits.MaxCalls)
+	assert.Equal(t, 72*time.Hour, cfg.Limits.MaxAge)
+	assert.True(t, cfg.Limits.HideDeleteAllButton)
 }
 
 func TestLoad_authDisabledAllowsEmptyCredentials(t *testing.T) {
@@ -172,6 +189,38 @@ func TestLoad_errors(t *testing.T) {
 			},
 			"auth_token must be set",
 		},
+		{
+			"negative max_messages",
+			func(t *testing.T) {
+				t.Setenv("SMS_MOCK_TWILIO_REQUIRE_AUTH", "false")
+				t.Setenv("SMS_MOCK_MAX_MESSAGES", "-1")
+			},
+			"max_messages must not be negative",
+		},
+		{
+			"negative max_calls",
+			func(t *testing.T) {
+				t.Setenv("SMS_MOCK_TWILIO_REQUIRE_AUTH", "false")
+				t.Setenv("SMS_MOCK_MAX_CALLS", "-5")
+			},
+			"max_calls must not be negative",
+		},
+		{
+			"max_age with minutes suffix",
+			func(t *testing.T) {
+				t.Setenv("SMS_MOCK_TWILIO_REQUIRE_AUTH", "false")
+				t.Setenv("SMS_MOCK_MAX_AGE", "30m")
+			},
+			"max_age must match",
+		},
+		{
+			"max_age garbage",
+			func(t *testing.T) {
+				t.Setenv("SMS_MOCK_TWILIO_REQUIRE_AUTH", "false")
+				t.Setenv("SMS_MOCK_MAX_AGE", "garbage")
+			},
+			"max_age must match",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,4 +271,34 @@ func TestGetInt_invalidFallsBackToDefault(t *testing.T) {
 	const key = "SMS_MOCK_TEST_INT"
 	t.Setenv(key, "not-a-number")
 	assert.Equal(t, 42, getInt(key, 42))
+}
+
+func TestParseMaxAge(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    time.Duration
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"72h", 72 * time.Hour, false},
+		{"1h", time.Hour, false},
+		{"3d", 72 * time.Hour, false},
+		{"1d", 24 * time.Hour, false},
+		{"30m", 0, true},
+		{"72", 0, true},
+		{"d", 0, true},
+		{"1.5h", 0, true},
+		{"-1h", 0, true}, // regex requires unsigned digits
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := parseMaxAge(tc.in)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }

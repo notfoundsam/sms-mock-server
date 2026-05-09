@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/notfoundsam/sms-mock-server/app/storage"
 )
@@ -558,6 +559,89 @@ func (s *FakeStore) ClearAll(ctx context.Context) (storage.ClearCounts, error) {
 		return storage.ClearCounts{}, err
 	}
 	return storage.ClearCounts{Messages: m, Calls: c, Callbacks: cb}, nil
+}
+
+func (s *FakeStore) PruneMessagesByCount(ctx context.Context, limit int) (int, error) {
+	s.mu.Lock()
+	if limit <= 0 || len(s.messages) <= limit {
+		s.mu.Unlock()
+		return 0, nil
+	}
+	// Sort a copy newest-first (matching the SQLite impl) and pick victims
+	// from the tail. The underlying s.messages slice keeps insertion order
+	// so concurrent reads (ListMessages, SearchMessages) stay consistent.
+	sorted := append([]storage.Message(nil), s.messages...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].CreatedAt.After(sorted[j].CreatedAt) ||
+			(sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) && sorted[i].ID > sorted[j].ID)
+	})
+	victims := append([]storage.Message(nil), sorted[limit:]...)
+	s.mu.Unlock()
+
+	for _, m := range victims {
+		if err := s.DeleteMessage(ctx, m.SID); err != nil {
+			return 0, err
+		}
+	}
+	return len(victims), nil
+}
+
+func (s *FakeStore) PruneCallsByCount(ctx context.Context, limit int) (int, error) {
+	s.mu.Lock()
+	if limit <= 0 || len(s.calls) <= limit {
+		s.mu.Unlock()
+		return 0, nil
+	}
+	sorted := append([]storage.Call(nil), s.calls...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].CreatedAt.After(sorted[j].CreatedAt) ||
+			(sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) && sorted[i].ID > sorted[j].ID)
+	})
+	victims := append([]storage.Call(nil), sorted[limit:]...)
+	s.mu.Unlock()
+
+	for _, c := range victims {
+		if err := s.DeleteCall(ctx, c.SID); err != nil {
+			return 0, err
+		}
+	}
+	return len(victims), nil
+}
+
+func (s *FakeStore) PruneMessagesByAge(ctx context.Context, cutoff time.Time) (int, error) {
+	s.mu.Lock()
+	var victims []storage.Message
+	for _, m := range s.messages {
+		if m.CreatedAt.Before(cutoff) {
+			victims = append(victims, m)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, m := range victims {
+		if err := s.DeleteMessage(ctx, m.SID); err != nil {
+			return 0, err
+		}
+	}
+	return len(victims), nil
+}
+
+func (s *FakeStore) PruneCallsByAge(ctx context.Context, cutoff time.Time) (int, error) {
+	s.mu.Lock()
+	var victims []storage.Call
+	for _, c := range s.calls {
+		if c.CreatedAt.Before(cutoff) {
+			victims = append(victims, c)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, c := range victims {
+		if err := s.DeleteCall(ctx, c.SID); err != nil {
+			return 0, err
+		}
+	}
+	return len(victims), nil
 }
 
 // errDuplicate models the SQLite uniqueness violation without dragging in

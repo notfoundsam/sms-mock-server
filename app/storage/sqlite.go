@@ -770,3 +770,140 @@ func nullableString(s string) any {
 	}
 	return s
 }
+
+// --- pruning ---
+
+func (s *sqliteStore) PruneMessagesByCount(ctx context.Context, limit int) (int, error) {
+	return s.pruneByCount(ctx, "messages", "message_sid", limit)
+}
+
+func (s *sqliteStore) PruneCallsByCount(ctx context.Context, limit int) (int, error) {
+	return s.pruneByCount(ctx, "calls", "call_sid", limit)
+}
+
+func (s *sqliteStore) PruneMessagesByAge(ctx context.Context, cutoff time.Time) (int, error) {
+	return s.pruneByAge(ctx, "messages", "message_sid", cutoff)
+}
+
+func (s *sqliteStore) PruneCallsByAge(ctx context.Context, cutoff time.Time) (int, error) {
+	return s.pruneByAge(ctx, "calls", "call_sid", cutoff)
+}
+
+// pruneByCount deletes oldest-first (ordered by created_at, id) until the
+// total row count in the named table is at or below limit. table and
+// sidColumn are caller-controlled identifiers (only ever literal strings
+// from PruneMessages*/PruneCalls*), never user input — same convention as
+// clearWithCascade.
+func (s *sqliteStore) pruneByCount(ctx context.Context, table, sidColumn string, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin prune %s tx: %w", table, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Collect SIDs of rows to delete: ordered newest-first, skip the first
+	// `limit`, take everything that follows. SQLite needs LIMIT -1 to mean
+	// "no limit" when an OFFSET is set.
+	query := "SELECT " + sidColumn + " FROM " + table +
+		" ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?"
+	sids, err := selectPruneSIDs(ctx, tx, query, limit)
+	if err != nil {
+		return 0, fmt.Errorf("select prune candidates from %s: %w", table, err)
+	}
+	if len(sids) == 0 {
+		return 0, nil
+	}
+
+	deleted, err := deletePruneBatch(ctx, tx, table, sidColumn, sids)
+	if err != nil {
+		return 0, err
+	}
+	if commitErr := tx.Commit(); commitErr != nil {
+		return 0, fmt.Errorf("commit prune %s: %w", table, commitErr)
+	}
+	return deleted, nil
+}
+
+// pruneByAge deletes rows with created_at < cutoff.
+func (s *sqliteStore) pruneByAge(ctx context.Context, table, sidColumn string, cutoff time.Time) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin prune-age %s tx: %w", table, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	query := "SELECT " + sidColumn + " FROM " + table + " WHERE created_at < ?"
+	sids, err := selectPruneSIDs(ctx, tx, query, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("select expired %s: %w", table, err)
+	}
+	if len(sids) == 0 {
+		return 0, nil
+	}
+
+	deleted, err := deletePruneBatch(ctx, tx, table, sidColumn, sids)
+	if err != nil {
+		return 0, err
+	}
+	if commitErr := tx.Commit(); commitErr != nil {
+		return 0, fmt.Errorf("commit prune-age %s: %w", table, commitErr)
+	}
+	return deleted, nil
+}
+
+// selectPruneSIDs runs the given SELECT (which must project a single SID
+// column as its only output) and collects the SIDs into a slice. Encapsulates
+// the rows.Next/Scan/Close pattern so callers can use a single error path.
+//
+// The query is assembled by callers from caller-controlled literal table /
+// column identifiers (never user input) plus parameterized placeholders for
+// the actual values, matching the convention used by clearWithCascade.
+func selectPruneSIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query prune sids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var sids []string
+	for rows.Next() {
+		var sid string
+		if scanErr := rows.Scan(&sid); scanErr != nil {
+			return nil, fmt.Errorf("scan prune sid: %w", scanErr)
+		}
+		sids = append(sids, sid)
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		return nil, fmt.Errorf("iterate prune sids: %w", iterErr)
+	}
+	return sids, nil
+}
+
+// deletePruneBatch deletes the given SIDs from `table` (using sidColumn as
+// the matching column on both the main table and delivery_events). Caller
+// owns the transaction. Returns the number of main-table rows deleted.
+func deletePruneBatch(ctx context.Context, tx *sql.Tx, table, sidColumn string, sids []string) (int, error) {
+	placeholders := strings.Repeat("?,", len(sids))
+	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+	args := make([]any, 0, len(sids))
+	for _, sid := range sids {
+		args = append(args, sid)
+	}
+
+	//nolint:gosec // G202: identifiers are caller-controlled literals; SID values are parameterized
+	if _, err := tx.ExecContext(ctx,
+		"DELETE FROM delivery_events WHERE "+sidColumn+" IN ("+placeholders+")", args...); err != nil {
+		return 0, fmt.Errorf("delete delivery_events for prune: %w", err)
+	}
+	//nolint:gosec // G202: identifiers are caller-controlled literals; SID values are parameterized
+	res, err := tx.ExecContext(ctx,
+		"DELETE FROM "+table+" WHERE "+sidColumn+" IN ("+placeholders+")", args...)
+	if err != nil {
+		return 0, fmt.Errorf("delete from %s for prune: %w", table, err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}

@@ -19,8 +19,14 @@ import (
 )
 
 // newTestHandler builds a Handler against the real templates directory
-// and a FakeStore. Use mutate to seed the store before tests.
+// and a FakeStore. Use mutate to seed the store before tests. The
+// hideDeleteAllButton flag is false by default; tests that want to verify
+// the button hides should call newTestHandlerWithHideButton.
 func newTestHandler(t *testing.T, mutate ...func(*testutil.FakeStore)) (http.Handler, *testutil.FakeStore) {
+	return newTestHandlerWithHideButton(t, false, mutate...)
+}
+
+func newTestHandlerWithHideButton(t *testing.T, hide bool, mutate ...func(*testutil.FakeStore)) (http.Handler, *testutil.FakeStore) {
 	t.Helper()
 	store := testutil.NewFakeStore()
 	for _, fn := range mutate {
@@ -34,7 +40,7 @@ func newTestHandler(t *testing.T, mutate ...func(*testutil.FakeStore)) (http.Han
 	require.NoError(t, err, "template engine")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(logger, store, engine, "twilio", "UTC")
+	h := New(logger, store, engine, "twilio", "UTC", hide)
 
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -335,3 +341,37 @@ func TestNormalizeType(t *testing.T) {
 	assert.Equal(t, "calls", normalizeType("calls"))
 }
 
+
+func TestSidebar_DeleteAllButtonShownWhenFlagOff(t *testing.T) {
+	h, _ := newTestHandlerWithHideButton(t, false)
+	rec := get(t, h, "/")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `action="/clear/messages"`,
+		"delete-all form should be present when HideDeleteAllButton=false")
+	assert.Contains(t, body, "Delete all messages")
+}
+
+func TestSidebar_DeleteAllButtonHiddenWhenFlagOn(t *testing.T) {
+	h, _ := newTestHandlerWithHideButton(t, true)
+	rec := get(t, h, "/")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.NotContains(t, body, `action="/clear/messages"`,
+		"delete-all form should be absent when HideDeleteAllButton=true")
+	assert.NotContains(t, body, "Delete all messages")
+}
+
+func TestSidebarFragment_DeleteAllButtonHonorsFlag(t *testing.T) {
+	// The fragment endpoint is what HTMX polls every 3s; verify the flag
+	// applies to the fragment too, not just the initial page render.
+	hOff, _ := newTestHandlerWithHideButton(t, false)
+	rec := get(t, hOff, "/ui/fragments/sidebar?type=messages")
+	require.Equal(t, 200, rec.Code)
+	assert.Contains(t, rec.Body.String(), "Delete all messages")
+
+	hOn, _ := newTestHandlerWithHideButton(t, true)
+	rec = get(t, hOn, "/ui/fragments/sidebar?type=messages")
+	require.Equal(t, 200, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "Delete all messages")
+}

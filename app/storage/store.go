@@ -149,5 +149,21 @@ type Store interface {
 	ClearCallbacks(ctx context.Context) (int, error)
 	ClearAll(ctx context.Context) (ClearCounts, error)
 
+	// Pruning. The background pruner (app/prune) calls these on a periodic
+	// tick to enforce retention limits. Each method deletes related
+	// delivery_events rows in the same transaction; tags cascade via FK.
+	//
+	// PruneMessagesByCount deletes oldest-first until the total count is at
+	// or below limit. limit=0 is a no-op (returns 0, nil). Returns the
+	// number of messages deleted.
+	PruneMessagesByCount(ctx context.Context, limit int) (int, error)
+	// PruneMessagesByAge deletes messages with created_at < cutoff. Returns
+	// the number deleted.
+	PruneMessagesByAge(ctx context.Context, cutoff time.Time) (int, error)
+	// PruneCallsByCount mirrors PruneMessagesByCount for the calls table.
+	PruneCallsByCount(ctx context.Context, limit int) (int, error)
+	// PruneCallsByAge mirrors PruneMessagesByAge for the calls table.
+	PruneCallsByAge(ctx context.Context, cutoff time.Time) (int, error)
+
 	Close() error
 }

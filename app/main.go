@@ -24,6 +24,7 @@ import (
 	"github.com/notfoundsam/sms-mock-server/app/httpapi"
 	"github.com/notfoundsam/sms-mock-server/app/provider"
 	"github.com/notfoundsam/sms-mock-server/app/provider/twilio"
+	"github.com/notfoundsam/sms-mock-server/app/prune"
 	"github.com/notfoundsam/sms-mock-server/app/storage"
 	tmpl "github.com/notfoundsam/sms-mock-server/app/template"
 	"github.com/notfoundsam/sms-mock-server/app/ui"
@@ -117,7 +118,7 @@ func buildStack(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 		Dispatcher: dispatcher,
 		AccountSid: cfg.Twilio.AccountSid,
 	})
-	uiHandler := ui.New(logger, store, engine, prov.Name(), cfg.Server.Timezone)
+	uiHandler := ui.New(logger, store, engine, prov.Name(), cfg.Server.Timezone, cfg.Limits.HideDeleteAllButton)
 
 	mux := http.NewServeMux()
 	apiServer.RegisterRoutes(mux)
@@ -157,6 +158,19 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
+	pruner := prune.New(st.store, logger, cfg.Limits, clock.Real{})
+	if pruner != nil {
+		go func() {
+			if err := pruner.Run(rootCtx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Warn("pruner stopped with error", "error", err)
+			}
+		}()
+		logger.Info("pruner started",
+			"max_messages", cfg.Limits.MaxMessages,
+			"max_calls", cfg.Limits.MaxCalls,
+			"max_age", cfg.Limits.MaxAge)
+	}
+
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:              addr,
@@ -193,7 +207,9 @@ func run(logger *slog.Logger) error {
 
 	// Shutdown sequence: HTTP server (stop accepting new connections, drain
 	// in-flight requests) → dispatcher (drain workers, no new HTTP callbacks)
-	// → store close (deferred above). 30s deadline for the whole sequence.
+	// → cancel rootCtx + wait for pruner to exit (so its next query doesn't
+	// race with store.Close) → store close (deferred above). 30s deadline
+	// for the whole sequence.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
@@ -202,6 +218,12 @@ func run(logger *slog.Logger) error {
 	}
 	if err := st.dispatcher.Close(shutdownCtx); err != nil {
 		logger.Warn("dispatcher close failed", "error", err)
+	}
+	if pruner != nil {
+		rootCancel()
+		if err := pruner.Wait(shutdownCtx); err != nil {
+			logger.Warn("pruner wait failed", "error", err)
+		}
 	}
 	logger.Info("shutdown complete")
 	return nil

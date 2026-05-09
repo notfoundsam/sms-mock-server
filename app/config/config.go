@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ type Config struct {
 	Provider string
 	Twilio   Twilio
 	Database Database
+	Limits   Limits
 }
 
 type Server struct {
@@ -49,6 +51,24 @@ type Callbacks struct {
 
 type Database struct {
 	Path string
+}
+
+// Limits configures storage retention and a UI safety toggle. They are
+// enforced by a background pruner (see app/prune) running on a 60s tick;
+// caps and TTL are not synchronous on the write path.
+type Limits struct {
+	// MaxMessages caps the messages table; oldest rows are pruned when
+	// the count exceeds the cap. Zero disables the cap.
+	MaxMessages int
+	// MaxCalls is the same cap for the calls table.
+	MaxCalls int
+	// MaxAge is the TTL applied to both tables (rows older than now-MaxAge
+	// are pruned). Zero disables the TTL. Only the env-var parser
+	// (parseMaxAge) accepts user input — this field is the parsed result.
+	MaxAge time.Duration
+	// HideDeleteAllButton hides the bulk-delete buttons in the web UI.
+	// Purely visual: the backend endpoints remain functional.
+	HideDeleteAllButton bool
 }
 
 // Load builds the configuration from environment variables, applying defaults
@@ -86,6 +106,11 @@ func defaults() *Config {
 			},
 		},
 		Database: Database{Path: "/tmp/mock_server.db"},
+		Limits: Limits{
+			MaxMessages: 500,
+			MaxCalls:    500,
+			// MaxAge defaults to 0 (TTL disabled).
+		},
 	}
 }
 
@@ -110,6 +135,32 @@ func applyEnv(cfg *Config) {
 	cfg.Twilio.Callbacks.DelaySeconds = getInt("SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS", cfg.Twilio.Callbacks.DelaySeconds)
 	cfg.Twilio.Callbacks.RetryAttempts = getInt("SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS", cfg.Twilio.Callbacks.RetryAttempts)
 	cfg.Twilio.Callbacks.RetryDelaySeconds = getInt("SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS", cfg.Twilio.Callbacks.RetryDelaySeconds)
+
+	cfg.Limits.MaxMessages = getInt("SMS_MOCK_MAX_MESSAGES", cfg.Limits.MaxMessages)
+	cfg.Limits.MaxCalls = getInt("SMS_MOCK_MAX_CALLS", cfg.Limits.MaxCalls)
+	cfg.Limits.HideDeleteAllButton = getBool("SMS_MOCK_HIDE_DELETE_ALL_BUTTON", cfg.Limits.HideDeleteAllButton)
+	// MaxAge parsing is deferred to validate() so a malformed value surfaces
+	// as a config error rather than silently falling back to the default.
+}
+
+// maxAgeRE matches the SMS_MOCK_MAX_AGE format: <int>h or <int>d.
+var maxAgeRE = regexp.MustCompile(`^(\d+)([hd])$`)
+
+// parseMaxAge accepts "<int>h" or "<int>d". Empty input returns (0, nil)
+// — the zero duration disables the TTL.
+func parseMaxAge(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	m := maxAgeRE.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("max_age must match <int>h or <int>d, got %q", s)
+	}
+	n, _ := strconv.Atoi(m[1]) // regex guarantees digits
+	if m[2] == "d" {
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	return time.Duration(n) * time.Hour, nil
 }
 
 func getStr(key, def string) string {
@@ -183,6 +234,18 @@ func (c *Config) validate() error {
 	if c.Database.Path == "" {
 		return errors.New("database.path must not be empty")
 	}
+
+	if c.Limits.MaxMessages < 0 {
+		return fmt.Errorf("max_messages must not be negative, got %d", c.Limits.MaxMessages)
+	}
+	if c.Limits.MaxCalls < 0 {
+		return fmt.Errorf("max_calls must not be negative, got %d", c.Limits.MaxCalls)
+	}
+	d, err := parseMaxAge(os.Getenv("SMS_MOCK_MAX_AGE"))
+	if err != nil {
+		return err
+	}
+	c.Limits.MaxAge = d
 
 	return nil
 }
