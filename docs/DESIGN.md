@@ -154,6 +154,7 @@ CREATE TABLE messages (
     body TEXT,
     status TEXT NOT NULL,
     callback_url TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT 0,  -- set when the UI detail page is opened
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -168,6 +169,7 @@ CREATE TABLE calls (
     status TEXT NOT NULL,
     callback_url TEXT,
     twiml_url TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT 0,  -- set when the UI detail page is opened
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -182,6 +184,25 @@ CREATE TABLE delivery_events (
     callback_sent BOOLEAN DEFAULT FALSE,
     callback_response TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tag tables. tags(name) is a global registry; message_tags / call_tags are
+-- the per-record link tables. ON DELETE CASCADE on the link tables removes
+-- orphan links automatically when a message or call is deleted (requires
+-- foreign_keys=1, set on the connection DSN).
+CREATE TABLE tags (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE message_tags (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (message_id, tag_id)
+);
+CREATE TABLE call_tags (
+    call_id INTEGER NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
+    tag_id  INTEGER NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (call_id, tag_id)
 );
 
 -- Callback logs table
@@ -344,40 +365,100 @@ validation:
 ```
 
 ### 3.7 Web UI
-**Responsibility**: Provide simple interface for browsing activity
+
+**Responsibility**: Provide a mailbox-style interface for inspecting received messages and calls.
+
+**Layout**: Three-zone CSS grid — top bar (brand, search, environment meta),
+left sidebar (type nav, optional Tags section, delete-all), right main pane
+(list, then full-page detail). Sidebar and chrome stay visible on detail
+pages so the user can navigate without losing context.
 
 **Pages**:
-1. **Dashboard** (`/`)
-   - Recent activity summary (last 10 messages/calls)
-   - Statistics (total messages, calls, callbacks)
-   - Auto-refresh every 3 seconds via HTMX
-   - Clickable rows to view message/call details in modal
+1. **Messages** (`/`) — default landing. Newest-first list with columns
+   `dot · From · To · Body · Status · Created · delete`. Unread rows render
+   bold with a leading `●`. Plain `<a href>` row links so middle/cmd-click
+   work and don't race with the polling swap. The link inside each cell
+   covers the full row height (vertical padding lives on the `<a>`, not the
+   `<td>`), so a click anywhere in the row targets the detail page.
 
-2. **Messages** (`/ui/messages`)
-   - Paginated table of all SMS messages (50 per page)
-   - Auto-refresh every 3 seconds via HTMX
-   - Click-to-view modal with full message details
-   - Previous/Next pagination controls
+2. **Calls** (`/calls`) — same shape as Messages, no Body column.
 
-3. **Calls** (`/ui/calls`)
-   - Paginated table of all calls (50 per page)
-   - Auto-refresh every 3 seconds via HTMX
-   - Click-to-view modal with full call details
-   - Previous/Next pagination controls
+3. **Detail** (`/view/messages/{sid}`, `/view/calls/{sid}`) — full-page
+   replacement (sidebar + topbar still visible). Marks the record read on
+   open. Renders From/To/SID/Status/Created card, Body block (messages only),
+   the record's tags as pill chips when present, collapsible "Raw record"
+   JSON, and a one-line "Callback delivery" summary when any `callback_logs`
+   row references the SID. Filter state (`?q=`, `?status=`) is threaded
+   through the row link and rebuilt by the Back button.
 
-4. **Callbacks** (`/ui/callbacks`)
-   - Paginated log of all callback attempts (50 per page)
-   - Auto-refresh every 3 seconds via HTMX
-   - Shows status code, attempt number, response body
-   - Previous/Next pagination controls
+**Search & filters** — single source of truth, the `?q=` URL param:
+- **Free text**: applies LIKE `%q%` to `from_number`/`to_number` plus `body`
+  (messages only).
+- **Tag operators**: `tag:foo` and `tag:"two words"` tokens inside `q` filter
+  by tag (AND-semantics across multiple tag tokens). Mixed with free text:
+  `verify tag:auth` finds records with body matching "verify" AND tagged
+  `auth`.
+- The top-bar input is debounced 300ms; live keystrokes update the list via
+  HTMX without polluting the URL bar. Pressing Enter submits a real form GET
+  so the URL becomes shareable.
+- **`?status=`** still works as a URL parameter for power users / scripts but
+  has no UI surface today.
 
-**Technology**: Server-side rendered HTML with stdlib `html/template` + HTMX for auto-refresh and dynamic updates
+**Tags** — user-defined metadata supplied by the client via the `X-Tags`
+HTTP header on the Twilio-shaped POST. The header value is comma-separated
+(e.g. `X-Tags: verification, auth`); whitespace is trimmed, names are
+lowercased, duplicates are folded. The Twilio payload itself is unchanged —
+tags are out-of-band signaling for the mock UI only.
 
-**HTMX Features**:
-- Automatic polling (`hx-trigger="every 3s"`) for real-time updates
-- Fragment updates without full page reload
-- Modal loading for detail views
-- Clear data actions with confirmation dialogs
+- Stored in `tags` (global registry, unique by name) joined to records via
+  `message_tags` / `call_tags` link tables.
+- The sidebar Tags section appears only when at least one record of the
+  active type has a tag attached. Per-type scope: a tag attached only to a
+  call doesn't appear in the Messages sidebar.
+- Single-select on click (replaces any prior tag); clicking the active tag
+  clears the filter. Free text in `q` is preserved across clicks.
+- Detail view shows a record's tags as pill chips next to its other metadata.
+- View-only: there's no UI to add or remove tags after the record was
+  recorded. To change tags, the client re-sends with a different `X-Tags`
+  header (which creates a new record).
+
+**Mutation**:
+- Per-row `DELETE /ui/messages/{sid}` / `DELETE /ui/calls/{sid}`, hover-only
+  delete button on each row, confirm via `hx-confirm`. Deleting a record
+  cascades its tag links via `ON DELETE CASCADE`.
+- Bulk "Delete all" button in the sidebar reuses the existing
+  `POST /clear/messages` / `POST /clear/calls` API routes, then redirects
+  back to the list.
+
+**Real-time**: HTMX polling. The list fragment self-replaces every 3 seconds
+via `hx-get="/ui/fragments/list?type=…"` + `hx-trigger="every 3s"` +
+`hx-swap="outerHTML"`. The sidebar fragment polls the same way to keep tag
+membership current.
+
+**Routes** (all method-prefixed via Go 1.22 `net/http` mux):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/{$}` | Messages mailbox |
+| `GET` | `/calls` | Calls mailbox |
+| `GET` | `/view/messages/{sid}` | Message detail (marks read) |
+| `GET` | `/view/calls/{sid}` | Call detail (marks read) |
+| `GET` | `/ui/fragments/list` | List body (polled, also receives search/filter requests) |
+| `GET` | `/ui/fragments/sidebar` | Sidebar body (polled) |
+| `DELETE` | `/ui/messages/{sid}` | Delete one message |
+| `DELETE` | `/ui/calls/{sid}` | Delete one call |
+
+**Templates** (`app/templates/ui/`): `base.html` (3-zone shell), `messages.html`
+and `calls.html` (page shells), `view/message.html` and `view/call.html`
+(detail full-pages), `fragments/list.html` and `fragments/sidebar.html`
+(polled fragments).
+
+**Search parser**: `app/ui/searchparse.go` splits the raw `q` into free-text
+terms and `tag:` tokens. Used by every page and fragment handler that needs
+to filter — keeps the SQL layer ignorant of the operator syntax.
+
+**Technology**: stdlib `html/template` server-side rendering + HTMX 1.x for
+swaps and confirmations. No client JS framework.
 
 ## 4. Data Flow
 
@@ -465,13 +546,13 @@ validation:
 │   ├── template/                     # text/template + html/template engine
 │   ├── callback/                     # async dispatcher (worker pool, Clock interface)
 │   ├── httpapi/                      # Twilio routes, /health, /clear/*, middleware
-│   ├── ui/                           # Dashboard + HTMX fragment handlers
+│   ├── ui/                           # Mailbox pages, detail views, HTMX fragments
 │   ├── clock/                        # Clock interface (real + fake for tests)
 │   ├── testutil/                     # Shared fakes for unit tests
 │   ├── templates/                    # JSON + HTML templates (embedded into binary)
 │   │   ├── responses/twilio/         # send_sms / make_call success / failure
 │   │   ├── errors/twilio/            # auth_failed, missing_parameter, invalid_*
-│   │   └── ui/                       # base.html, dashboard.html, fragments/
+│   │   └── ui/                       # base.html, messages.html, calls.html, view/, fragments/
 │   └── static/                       # CSS, JS, favicon (embedded)
 ├── scripts/                          # seed_data.sh (curl-based sample data)
 ├── docs/                             # DESIGN.md + plans
@@ -1058,7 +1139,7 @@ each with its own unit tests. Tests use stdlib `testing` plus `testify`
 **Test layers:**
 - Unit tests per package (`go test ./...`) — fast, deterministic, use fakes (`app/testutil/`) for storage / HTTP / clock.
 - Race detector in CI (`go test -race ./...`).
-- Smoke test (`app/main_test.go::TestSmoke_EndToEnd`) — builds the full stack via `httptest.NewServer` and exercises the API end-to-end (POST Messages → persistence → /health → dashboard → static asset → /clear/all).
+- Smoke test (`app/main_test.go::TestSmoke_EndToEnd`) — builds the full stack via `httptest.NewServer` and exercises the API end-to-end (POST Messages → persistence → /health → mailbox page → static asset → /clear/all).
 - Linting (`make lint`) — `golangci-lint` with 41 linters configured in `.golangci.yml`.
 
 **Adding a new feature** typically means:

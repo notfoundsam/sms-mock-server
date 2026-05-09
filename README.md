@@ -8,7 +8,7 @@ A mock server for Twilio SMS and Call APIs, perfect for development and testing 
 - **Configurable behavior** - Control success/failure scenarios via configuration
 - **Callback simulation** - Automatic delivery status callbacks with configurable delays
 - **Validation** - Toggleable authentication, phone format, and parameter validation
-- **Web UI** - Simple dashboard to monitor messages, calls, and callbacks
+- **Web UI** - Mailbox-style interface to inspect received messages and calls, with user-defined tags supplied via the `X-Tags` HTTP header
 - **Docker support** - Easy deployment with Docker and Docker Compose
 - **SDK compatible** - Works with official Twilio SDKs (Python, Node.js, PHP, Ruby, Java, C#)
 
@@ -281,16 +281,55 @@ POST /clear/all         # Clear all data
 
 ## Web UI
 
-Access the web UI at `http://localhost:8080`:
+Access the web UI at `http://localhost:8080`. The layout is a mailbox-style
+inbox: top bar with search, left sidebar with type nav and tags, list pane
+that opens records as full pages.
 
-![Dashboard Screenshot](docs/dashboard.png)
+- **Messages** (`/`) — list of received SMS, newest first. Unread rows are bold
+  with a leading dot.
+- **Calls** (`/calls`) — list of calls in the same shape (no message body).
+- **Tags** — sidebar section that appears only when at least one record of the
+  active type carries a tag. Tags are user-defined and per-type (the messages
+  sidebar shows only tags attached to messages; same for calls). Click a tag
+  to filter; click again or click another tag to switch (single-select).
+  See [Tagging Messages](#tagging-messages) below.
+- **Search** — top-bar input. Free text filters across `From`, `To`, and
+  `Body` (calls: `From`/`To` only). Inline `tag:foo` operators are supported
+  in the same box (e.g. `verify tag:auth` finds messages containing "verify"
+  AND tagged `auth`). Live as you type; press Enter for a shareable URL.
+- **Detail view** — clicking a row opens `/view/messages/{sid}` (or
+  `/view/calls/{sid}`). Marks the record read on open. Shows a one-line
+  callback delivery summary if any webhook was sent and the record's tags as
+  pill chips. Filter state is preserved through to the Back button.
+- **Delete** — per-row delete on hover; "Delete all" button at the bottom of
+  the sidebar (calls `POST /clear/messages` or `/clear/calls`).
+- **Real-time** — list and sidebar poll every 3 seconds via HTMX, so new
+  records appear without a manual reload.
 
-- **Dashboard** - Overview with statistics and recent activity (auto-refreshes every 3 seconds)
-- **Messages** - Paginated list of all SMS messages (50 per page) with click-to-view details modal
-- **Calls** - Paginated list of all calls (50 per page) with click-to-view details modal
-- **Callbacks** - Paginated log of all callback attempts (50 per page) with responses
+The dashboard, the Callbacks page, and modal-style detail views are gone.
+Callback delivery info now lives inline on the relevant message/call detail
+page; raw callback log rows remain queryable via
+`SELECT * FROM callback_logs;` against the SQLite DB.
 
-All pages auto-refresh every 3 seconds to show new data without manual reload.
+### Tagging Messages
+
+Clients can attach arbitrary tags to a message or call by sending an `X-Tags`
+HTTP header on the Twilio-shaped POST. The Twilio request body is unchanged —
+tags are out-of-band metadata for the mock UI's benefit only.
+
+```bash
+curl -X POST http://localhost:8080/2010-04-01/Accounts/AC1/Messages.json \
+  -H 'X-Tags: verification, auth' \
+  -d 'From=%2B15550000001&To=%2B15551234567&Body=Your+code+is+1234'
+```
+
+- **Format**: comma-separated names. Whitespace around each name is trimmed,
+  empty entries are dropped, names are lowercased on the server, duplicates
+  are folded.
+- **Multiple tags**: a record can carry zero or more tags. The query
+  `tag:verification tag:auth` finds records that have both (AND-semantics).
+- **Per-type isolation**: a tag attached only to a call appears in the Calls
+  sidebar, not in the Messages sidebar.
 
 ## Callback Flow
 
@@ -389,8 +428,8 @@ make run
 
 Test coverage:
 - **Per-package unit tests** (`app/<pkg>/*_test.go`) using stdlib `testing` + `testify`. Includes table-driven validation matrices, fakes for storage / HTTP / clock.
-- **End-to-end smoke test** (`app/main_test.go`) builds the full stack via `httptest.NewServer` and exercises POST Messages → persistence → `/health` → dashboard → static asset → `/clear/all`.
-- All HTTP endpoints (Twilio Messages/Calls, `/health`, `/clear/*`, `/callback-test`, `/favicon.ico`, dashboard, UI fragments) are covered by handler-level tests in `app/httpapi/` and `app/ui/`.
+- **End-to-end smoke test** (`app/main_test.go`) builds the full stack via `httptest.NewServer` and exercises POST Messages → persistence → `/health` → messages page → static asset → `/clear/all`.
+- All HTTP endpoints (Twilio Messages/Calls, `/health`, `/clear/*`, `/callback-test`, `/favicon.ico`, mailbox/detail pages, UI fragments) are covered by handler-level tests in `app/httpapi/` and `app/ui/`.
 
 ## Project Structure
 
@@ -407,7 +446,7 @@ sms-mock-server/
 │   ├── template/              # text/template + html/template engine
 │   ├── callback/              # Async dispatcher: worker pool + Clock-driven retries
 │   ├── httpapi/               # Twilio API routes, /health, /clear/*, middleware
-│   ├── ui/                    # Dashboard + HTMX fragment handlers
+│   ├── ui/                    # Mailbox pages, detail views, HTMX fragment handlers
 │   ├── clock/                 # Clock interface (real + fake for tests)
 │   ├── testutil/              # Shared fakes for unit tests
 │   ├── templates/             # JSON response/error + HTML UI templates (embedded)
@@ -441,7 +480,7 @@ sms-mock-server/
 - Verify the `To` number is in `registered_numbers` (success flow) or `failure_numbers` (failure flow). Numbers in *neither* list stay queued forever and produce no callbacks — this is intentional, mirroring the original Python behavior.
 - Verify your callback URL is accessible from the mock server
 - For local testing, use the built-in `/callback-test` endpoint: `http://localhost:8080/callback-test`
-- Check callback logs in the UI at `/ui/callbacks`
+- Inspect callback delivery on the message/call detail page (`/view/messages/{sid}` shows a "Callback delivery" summary if any webhooks were sent for that record). For raw rows, query the SQLite DB directly: `sqlite3 /tmp/sms-mock.db 'SELECT * FROM callback_logs;'`
 
 **Phone number validation errors:**
 - Use E.164 format: `+15551234567` (with `+` and country code)

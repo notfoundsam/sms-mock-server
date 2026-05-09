@@ -1,0 +1,67 @@
+{{define "title"}}{{ .Call.SID }} · SMS Mock{{end}}
+
+{{define "topbar_search"}}
+<form class="topbar-search" action="/calls" method="GET">
+    <input type="search" name="q" value="{{ .Q }}" placeholder="Search from / to..." autocomplete="off">
+</form>
+{{end}}
+
+{{define "sidebar"}}
+{{template "fragments/sidebar.html" .}}
+{{end}}
+
+{{define "content"}}
+<div class="detail">
+    <div class="detail-toolbar">
+        <a href="{{ .BackURL }}" class="btn-back">‹ Back to inbox</a>
+        <button class="btn-danger" type="button"
+                hx-delete="/ui/calls/{{ .Call.SID }}"
+                hx-confirm="Delete this call?"
+                hx-on::after-request="if(event.detail.successful) window.location='{{ .BackURL }}'">
+            Delete
+        </button>
+    </div>
+
+    <div class="detail-card">
+        <div class="detail-row"><span class="k">From</span><span class="v phone">{{ .Call.From }}</span></div>
+        <div class="detail-row"><span class="k">To</span><span class="v phone">{{ .Call.To }}</span></div>
+        <div class="detail-row"><span class="k">SID</span><span class="v"><code>{{ .Call.SID }}</code></span></div>
+        <div class="detail-row"><span class="k">Status</span><span class="v"><span class="status status-{{ .Call.Status }}">{{ .Call.Status }}</span></span></div>
+        <div class="detail-row"><span class="k">Created</span><span class="v">{{ formatTime .Call.CreatedAt }}</span></div>
+        {{ if .Call.CallbackURL }}
+        <div class="detail-row"><span class="k">Callback URL</span><span class="v"><code>{{ .Call.CallbackURL }}</code></span></div>
+        {{ end }}
+        {{ if .Call.TwiMLURL }}
+        <div class="detail-row"><span class="k">TwiML URL</span><span class="v"><code>{{ .Call.TwiMLURL }}</code></span></div>
+        {{ end }}
+        {{ if .RecordTags }}
+        <div class="detail-row"><span class="k">Tags</span><span class="v">
+            {{ range .RecordTags }}<span class="tag-pill">{{ . }}</span>{{ end }}
+        </span></div>
+        {{ end }}
+    </div>
+
+    {{ if gt .CallbackSummary.Count 0 }}
+    <div class="detail-card callback-summary">
+        <h3>Callback delivery</h3>
+        <p>
+            {{ if and (ge .CallbackSummary.LastStatus 200) (lt .CallbackSummary.LastStatus 400) }}
+                <span class="ok">✓</span>
+            {{ else }}
+                <span class="fail">✗</span>
+            {{ end }}
+            HTTP {{ .CallbackSummary.LastStatus }} ·
+            {{ .CallbackSummary.Count }} attempt{{ if ne .CallbackSummary.Count 1 }}s{{ end }}
+        </p>
+        {{ if .CallbackSummary.LastResponseBody }}
+        <details><summary>Last response body</summary><pre>{{ .CallbackSummary.LastResponseBody }}</pre></details>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    <details class="detail-card">
+        <summary>Raw record</summary>
+        <pre>{{ .RawJSON }}</pre>
+    </details>
+</div>
+{{end}}

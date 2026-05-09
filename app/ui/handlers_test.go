@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,262 +49,289 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func req(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(method, path, nil)
+	h.ServeHTTP(rec, r)
+	return rec
+}
+
 // --- pages ---
 
-func TestDashboard_Empty(t *testing.T) {
+func TestRoot_RendersMessagesPage(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := get(t, h, "/")
 	require.Equal(t, 200, rec.Code, "body=%s", rec.Body.String())
 	body := rec.Body.String()
-	assert.Contains(t, body, "<title>Dashboard - SMS Mock Server</title>", "title missing or wrong; body excerpt: %s", body[:min(300, len(body))])
-	assert.Contains(t, body, "Total Messages", "stats cards missing")
-	assert.Contains(t, body, "Total Calls", "stats cards missing")
-	assert.Contains(t, body, "No messages yet", "empty messages state missing")
-	assert.Contains(t, body, "Provider: TWILIO", "provider header missing/wrong")
+	assert.Contains(t, body, "<title>Messages · SMS Mock</title>")
+	assert.Contains(t, body, "Messages") // sidebar nav
+	assert.Contains(t, body, "Calls")    // sidebar nav
+	assert.Contains(t, body, "TWILIO")
+	assert.Contains(t, body, "No messages")
 }
 
-func TestDashboard_WithData(t *testing.T) {
+func TestRoot_WithMessages(t *testing.T) {
 	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
-		ctx := context.Background()
-		_ = s.SaveMessage(ctx, &storage.Message{
-			SID: "SM_dashboard_test_x", Provider: "twilio",
-			From: "+15550000001", To: "+15551234567", Body: "hello", Status: "delivered",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(),
-		})
-		_ = s.SaveCall(ctx, &storage.Call{
-			SID: "CA_dashboard_test_x", Provider: "twilio",
-			From: "+15550000001", To: "+15551234567", Status: "completed",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		_ = s.SaveMessage(context.Background(), &storage.Message{
+			SID: "SM1", Provider: "twilio", From: "+15550000001", To: "+15551234567",
+			Body: "hello world", Status: "delivered",
 		})
 	})
 	rec := get(t, h, "/")
 	body := rec.Body.String()
-
-	// Stats reflect counts
-	assert.Contains(t, body, ">1<", "expected stats values to include 1")
-	// Recent message rendered. html/template escapes "+" → "&#43;".
-	assert.Contains(t, body, "&#43;15550000001", "phone numbers not rendered (HTML-escaped form expected)")
-	assert.Contains(t, body, "&#43;15551234567", "phone numbers not rendered (HTML-escaped form expected)")
-	assert.Contains(t, body, "delivered", "status not rendered")
+	assert.Contains(t, body, "&#43;15550000001", "phone numbers HTML-escaped")
+	assert.Contains(t, body, "hello world")
+	assert.Contains(t, body, "delivered")
+	assert.Contains(t, body, "/view/messages/SM1", "row should link to detail")
 }
 
-func TestDashboard_NotFoundForNonRootPath(t *testing.T) {
-	h, _ := newTestHandler(t)
-	rec := get(t, h, "/some-other-path")
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
-func TestMessagesPage_Empty(t *testing.T) {
-	h, _ := newTestHandler(t)
-	rec := get(t, h, "/ui/messages")
-	require.Equal(t, 200, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, "All Messages", "page heading missing")
-	assert.Contains(t, body, "No messages found", "empty state missing")
-}
-
-func TestMessagesPage_Pagination(t *testing.T) {
+func TestRoot_QFilter(t *testing.T) {
 	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
 		ctx := context.Background()
-		// 51 messages → 2 pages. SIDs need to be unique or FakeStore drops them.
-		for i := 0; i < 51; i++ {
-			_ = s.SaveMessage(ctx, &storage.Message{
-				SID: "SM" + strconv.Itoa(i) + strings.Repeat("x", 28),
-				Provider: "twilio", From: "+1", To: "+2",
-				Body: "msg", Status: "queued",
-			})
-		}
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", From: "+1", To: "+2", Body: "alpha", Status: "delivered", Provider: "twilio"})
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM2", From: "+1", To: "+2", Body: "beta", Status: "delivered", Provider: "twilio"})
 	})
-
-	// page 1
-	rec := get(t, h, "/ui/messages?page=1")
+	rec := get(t, h, "/?q=alpha")
 	body := rec.Body.String()
-	assert.Contains(t, body, "Page 1 of 2", "page 1 indicator missing; body excerpt: %s", body[max(0, len(body)-500):])
-	assert.Contains(t, body, `href="?page=2"`, "Next link to page 2 missing on page 1")
-
-	// page 2
-	rec = get(t, h, "/ui/messages?page=2")
-	body = rec.Body.String()
-	assert.Contains(t, body, "Page 2 of 2", "page 2 indicator missing")
-	assert.Contains(t, body, `href="?page=1"`, "Previous link to page 1 missing on page 2")
+	assert.Contains(t, body, "alpha")
+	assert.NotContains(t, body, "beta")
 }
 
-func TestMessagesPage_InvalidPageClampsToOne(t *testing.T) {
-	h, _ := newTestHandler(t)
-	cases := []string{"/ui/messages?page=0", "/ui/messages?page=-5", "/ui/messages?page=garbage"}
-	for _, p := range cases {
-		rec := get(t, h, p)
-		assert.Equal(t, 200, rec.Code, "%s: want 200 (clamped to page 1)", p)
-	}
-}
-
-func TestCallsPage_Empty(t *testing.T) {
-	h, _ := newTestHandler(t)
-	rec := get(t, h, "/ui/calls")
-	require.Equal(t, 200, rec.Code)
-	assert.Contains(t, rec.Body.String(), "All Calls", "page heading missing")
-}
-
-func TestCallbacksPage_Empty(t *testing.T) {
-	h, _ := newTestHandler(t)
-	rec := get(t, h, "/ui/callbacks")
-	require.Equal(t, 200, rec.Code)
-	assert.Contains(t, rec.Body.String(), "Callback Logs", "page heading missing")
-}
-
-// --- fragments ---
-
-func TestFragmentRoutesReturn200(t *testing.T) {
-	h, _ := newTestHandler(t)
-	cases := []string{
-		"/ui/fragments/stats",
-		"/ui/fragments/recent-messages",
-		"/ui/fragments/recent-calls",
-		"/ui/fragments/messages-table",
-		"/ui/fragments/calls-table",
-		"/ui/fragments/callbacks-table",
-	}
-	for _, p := range cases {
-		rec := get(t, h, p)
-		assert.Equal(t, 200, rec.Code, "%s: want 200", p)
-		// Fragments should render minimal content (no full HTML doc)
-		assert.NotContains(t, rec.Body.String(), "<!DOCTYPE html>", "%s: fragment unexpectedly contains DOCTYPE (full page leak)", p)
-	}
-}
-
-func TestStatsFragment_RendersCounts(t *testing.T) {
+func TestRoot_StatusFilter(t *testing.T) {
 	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
 		ctx := context.Background()
-		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
-		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM2", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
-		_ = s.SaveCall(ctx, &storage.Call{SID: "CA1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", From: "+1", To: "+2", Body: "alpha", Status: "delivered", Provider: "twilio"})
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM2", From: "+1", To: "+2", Body: "beta", Status: "queued", Provider: "twilio"})
 	})
-	rec := get(t, h, "/ui/fragments/stats")
+	rec := get(t, h, "/?status=delivered")
 	body := rec.Body.String()
-	assert.Contains(t, body, ">2<", "stats fragment doesn't show 2 messages")
-	assert.Contains(t, body, ">1<", "stats fragment doesn't show 1 call")
+	assert.Contains(t, body, "alpha")
+	assert.NotContains(t, body, "beta", "queued message should be filtered out")
 }
+
+func TestCalls_Page(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveCall(context.Background(), &storage.Call{
+			SID: "CA1", Provider: "twilio", From: "+1", To: "+2", Status: "completed",
+		})
+	})
+	rec := get(t, h, "/calls")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "<title>Calls · SMS Mock</title>")
+	assert.Contains(t, body, "/view/calls/CA1")
+	assert.Contains(t, body, "completed")
+}
+
+func TestRetiredRoutes_Return404(t *testing.T) {
+	h, _ := newTestHandler(t)
+	for _, p := range []string{"/ui/messages", "/ui/calls", "/ui/callbacks", "/ui/fragments/stats", "/ui/fragments/recent-messages"} {
+		rec := get(t, h, p)
+		assert.Equal(t, http.StatusNotFound, rec.Code, "%s should be 404", p)
+	}
+}
+
+// --- detail ---
 
 func TestMessageDetail_NotFound(t *testing.T) {
 	h, _ := newTestHandler(t)
-	rec := get(t, h, "/ui/fragments/message/SMmissing")
+	rec := get(t, h, "/view/messages/SMmissing")
 	assert.Equal(t, http.StatusNotFound, rec.Code)
-	assert.Contains(t, rec.Body.String(), "Message not found", "not-found body missing")
+	assert.Contains(t, rec.Body.String(), "Message not found")
 }
 
-func TestMessageDetail_Found(t *testing.T) {
-	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+func TestMessageDetail_FoundMarksRead(t *testing.T) {
+	var store *testutil.FakeStore
+	h, store := newTestHandler(t, func(s *testutil.FakeStore) {
 		_ = s.SaveMessage(context.Background(), &storage.Message{
 			SID: "SM12345", Provider: "twilio",
 			From: "+15550000001", To: "+15551234567",
 			Body: "Hello world", Status: "delivered", CallbackURL: "http://app/cb",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		})
 	})
-	rec := get(t, h, "/ui/fragments/message/SM12345")
+	rec := get(t, h, "/view/messages/SM12345")
 	require.Equal(t, 200, rec.Code)
 	body := rec.Body.String()
-	// html/template escapes "+" → "&#43;" in body output.
-	for _, want := range []string{"SM12345", "Hello world", "&#43;15550000001", "&#43;15551234567", "http://app/cb"} {
+	for _, want := range []string{"SM12345", "Hello world", "&#43;15550000001", "http://app/cb"} {
 		assert.Contains(t, body, want, "detail body missing %q", want)
 	}
+
+	// Side effect: opening detail marks read.
+	got, err := store.GetMessage(context.Background(), "SM12345")
+	require.NoError(t, err)
+	assert.True(t, got.IsRead, "MarkMessageRead should have run")
 }
 
-func TestCallDetail_NotFound(t *testing.T) {
+func TestMessageDetail_NotFound_DoesNotMarkRead(t *testing.T) {
+	h, store := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveMessage(context.Background(), &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
+	})
+	rec := get(t, h, "/view/messages/SMmissing")
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	got, _ := store.GetMessage(context.Background(), "SM1")
+	assert.False(t, got.IsRead, "no other message should have been marked read")
+}
+
+func TestMessageDetail_CallbackSummary(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		ctx := context.Background()
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "delivered"})
+		_ = s.SaveCallbackLog(ctx, &storage.CallbackLog{TargetURL: "x", Payload: `{"MessageSid":"SM1","MessageStatus":"sent"}`, StatusCode: 200, ResponseBody: "ok"})
+		_ = s.SaveCallbackLog(ctx, &storage.CallbackLog{TargetURL: "x", Payload: `{"MessageSid":"SM1","MessageStatus":"delivered"}`, StatusCode: 200, ResponseBody: "ok"})
+	})
+	rec := get(t, h, "/view/messages/SM1")
+	body := rec.Body.String()
+	assert.Contains(t, body, "Callback delivery")
+	assert.Contains(t, body, "HTTP 200")
+	assert.Contains(t, body, "2 attempts")
+}
+
+func TestMessageDetail_NoCallbackSummaryWhenAbsent(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveMessage(context.Background(), &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "delivered"})
+	})
+	rec := get(t, h, "/view/messages/SM1")
+	assert.NotContains(t, rec.Body.String(), "Callback delivery")
+}
+
+func TestCallDetail(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveCall(context.Background(), &storage.Call{
+			SID: "CA1", Provider: "twilio", From: "+1", To: "+2", Status: "completed", TwiMLURL: "http://example/twiml",
+		})
+	})
+	rec := get(t, h, "/view/calls/CA1")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "CA1")
+	assert.Contains(t, body, "http://example/twiml")
+}
+
+// --- fragments ---
+
+func TestListFragment_Messages(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveMessage(context.Background(), &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Body: "hi", Status: "delivered"})
+	})
+	rec := get(t, h, "/ui/fragments/list?type=messages")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "SM1")
+	assert.NotContains(t, body, "<!DOCTYPE", "fragments don't render full pages")
+}
+
+func TestListFragment_Calls(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveCall(context.Background(), &storage.Call{SID: "CA1", Provider: "twilio", From: "+1", To: "+2", Status: "completed"})
+	})
+	rec := get(t, h, "/ui/fragments/list?type=calls")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "/view/calls/CA1")
+}
+
+func TestSidebarFragment_NoTagsHidesSection(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		ctx := context.Background()
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
+	})
+	rec := get(t, h, "/ui/fragments/sidebar?type=messages")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.NotContains(t, body, "<h3 class=\"sidebar-heading\">Tags</h3>",
+		"Tags section should not render when no records are tagged")
+}
+
+func TestSidebarFragment_ShowsTagWhenAttached(t *testing.T) {
+	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
+		ctx := context.Background()
+		_ = s.SaveMessage(ctx, &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
+		m, _ := s.GetMessage(ctx, "SM1")
+		_ = s.SetMessageTags(ctx, m.ID, []string{"verification", "auth"})
+	})
+	rec := get(t, h, "/ui/fragments/sidebar?type=messages")
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "<h3 class=\"sidebar-heading\">Tags</h3>")
+	assert.Contains(t, body, ">verification<")
+	assert.Contains(t, body, ">auth<")
+}
+
+func TestSidebarFragment_ActiveType(t *testing.T) {
 	h, _ := newTestHandler(t)
-	rec := get(t, h, "/ui/fragments/call/CAmissing")
+	rec := get(t, h, "/ui/fragments/sidebar?type=calls")
+	body := rec.Body.String()
+	// The Calls nav item should carry active class.
+	idx := strings.Index(body, `href="/calls"`)
+	require.NotEqual(t, -1, idx, "calls nav not rendered")
+	// Find class attribute around it
+	end := idx + 200
+	if end > len(body) {
+		end = len(body)
+	}
+	assert.Contains(t, body[idx:end], "active", "calls link should be active when type=calls")
+}
+
+// --- delete ---
+
+func TestDeleteMessage_Success(t *testing.T) {
+	h, store := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveMessage(context.Background(), &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
+	})
+	rec := req(t, h, "DELETE", "/ui/messages/SM1")
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	_, err := store.GetMessage(context.Background(), "SM1")
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+func TestDeleteMessage_NotFound(t *testing.T) {
+	h, _ := newTestHandler(t)
+	rec := req(t, h, "DELETE", "/ui/messages/SMmissing")
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestCallDetail_Found(t *testing.T) {
+func TestDeleteMessage_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
-		_ = s.SaveCall(context.Background(), &storage.Call{
-			SID: "CA12345", Provider: "twilio",
-			From: "+1", To: "+2", Status: "completed", TwiMLURL: "http://example/twiml",
-		})
+		_ = s.SaveMessage(context.Background(), &storage.Message{SID: "SM1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
 	})
-	rec := get(t, h, "/ui/fragments/call/CA12345")
-	require.Equal(t, 200, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, "CA12345", "Call SID not in body")
-	assert.Contains(t, body, "http://example/twiml", "TwiML URL not in body")
+	rec := req(t, h, "POST", "/ui/messages/SM1")
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "Go 1.22 mux returns 405 for method mismatch")
 }
 
-func TestCallbackDetail_NotFound(t *testing.T) {
-	h, _ := newTestHandler(t)
-	cases := []string{
-		"/ui/fragments/callback-detail/99999",
-		"/ui/fragments/callback-detail/notanumber",
-	}
-	for _, p := range cases {
-		rec := get(t, h, p)
-		assert.Equal(t, http.StatusNotFound, rec.Code, "%s: want 404", p)
-	}
-}
-
-func TestCallbackDetail_FoundWithEnrichedFields(t *testing.T) {
-	var savedID int64
-	h, _ := newTestHandler(t, func(s *testutil.FakeStore) {
-		l := &storage.CallbackLog{
-			TargetURL: "http://app/cb",
-			Payload: `{"MessageSid":"SM1","MessageStatus":"delivered","From":"+1","To":"+2"}`,
-			StatusCode: 200, AttemptNumber: 1,
-		}
-		_ = s.SaveCallbackLog(context.Background(), l)
-		savedID = l.ID
+func TestDeleteCall_Success(t *testing.T) {
+	h, store := newTestHandler(t, func(s *testutil.FakeStore) {
+		_ = s.SaveCall(context.Background(), &storage.Call{SID: "CA1", Provider: "twilio", From: "+1", To: "+2", Status: "queued"})
 	})
-	rec := get(t, h, "/ui/fragments/callback-detail/"+stringFromInt(savedID))
-	require.Equal(t, 200, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, "delivered", "MessageStatus from payload not rendered")
-	assert.Contains(t, body, "http://app/cb", "target URL not rendered")
-	assert.Contains(t, body, "200", "status code 200 not rendered")
+	rec := req(t, h, "DELETE", "/ui/calls/CA1")
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	_, err := store.GetCall(context.Background(), "CA1")
+	assert.ErrorIs(t, err, storage.ErrNotFound)
 }
 
-// --- enrichCallback unit ---
+// --- pagination ---
 
-func TestEnrichCallback_ParsesPayload(t *testing.T) {
-	log := &storage.CallbackLog{
-		Payload: `{"MessageSid":"SM1","MessageStatus":"sent","To":"+1","From":"+2"}`,
-	}
-	row := enrichCallback(log)
-	assert.Equal(t, "SM1", row.MessageSID)
-	assert.Equal(t, "sent", row.MessageStatus)
-	assert.Empty(t, row.CallSID, "call fields should be empty: %+v", row)
-	assert.Empty(t, row.CallStatus, "call fields should be empty: %+v", row)
-}
-
-func TestEnrichCallback_EmptyPayload(t *testing.T) {
-	log := &storage.CallbackLog{}
-	row := enrichCallback(log)
-	assert.Empty(t, row.MessageSID, "empty payload should yield empty fields: %+v", row)
-	assert.Empty(t, row.CallSID, "empty payload should yield empty fields: %+v", row)
-	assert.Empty(t, row.MessageStatus, "empty payload should yield empty fields: %+v", row)
-	assert.Empty(t, row.CallStatus, "empty payload should yield empty fields: %+v", row)
-}
-
-func TestEnrichCallback_BadJSON(t *testing.T) {
-	log := &storage.CallbackLog{Payload: "not json"}
-	row := enrichCallback(log)
-	assert.Empty(t, row.MessageSID, "bad JSON should yield empty fields: %+v", row)
-}
-
-// --- pagination math ---
-
-func TestTotalPages(t *testing.T) {
-	cases := []struct{ total, want int }{
-		{0, 0},
-		{1, 1},
-		{50, 1},
-		{51, 2},
-		{100, 2},
-		{101, 3},
-	}
+func TestPagination_Math(t *testing.T) {
+	cases := []struct{ total, want int }{{0, 0}, {1, 1}, {50, 1}, {51, 2}, {100, 2}, {101, 3}}
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, totalPages(tc.total), "totalPages(%d)", tc.total)
 	}
 }
 
+func TestRoot_PaginationInvalidPageClampsToOne(t *testing.T) {
+	h, _ := newTestHandler(t)
+	for _, p := range []string{"/?page=0", "/?page=-5", "/?page=garbage"} {
+		rec := get(t, h, p)
+		assert.Equal(t, 200, rec.Code, "%s should clamp to page 1", p)
+	}
+}
+
 // --- helpers ---
 
-func stringFromInt(n int64) string { return strconv.FormatInt(n, 10) }
+func TestNormalizeType(t *testing.T) {
+	assert.Equal(t, "messages", normalizeType(""))
+	assert.Equal(t, "messages", normalizeType("garbage"))
+	assert.Equal(t, "messages", normalizeType("messages"))
+	assert.Equal(t, "calls", normalizeType("calls"))
+}
+

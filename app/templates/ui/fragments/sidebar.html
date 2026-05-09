@@ -1,0 +1,45 @@
+<div id="sidebar" class="sidebar-inner"
+     hx-get="/ui/fragments/sidebar?type={{ .Type }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}"
+     hx-trigger="every 3s"
+     hx-target="this"
+     hx-swap="outerHTML">
+
+    <nav class="sidebar-nav">
+        <a href="/" class="sidebar-nav-item {{ if eq .Type "messages" }}active{{ end }}">
+            <span class="label">Messages</span>
+            <span class="count">{{ if eq .Type "messages" }}{{ .ActiveCount }}{{ else }}{{ .OtherCount }}{{ end }}</span>
+        </a>
+        <a href="/calls" class="sidebar-nav-item {{ if eq .Type "calls" }}active{{ end }}">
+            <span class="label">Calls</span>
+            <span class="count">{{ if eq .Type "calls" }}{{ .ActiveCount }}{{ else }}{{ .OtherCount }}{{ end }}</span>
+        </a>
+    </nav>
+
+    {{ if .TagNames }}
+    {{ $type := .Type }}
+    {{ $query := .Query }}
+    <div class="sidebar-section">
+        <h3 class="sidebar-heading">Tags</h3>
+        <ul class="sidebar-tags">
+            {{ range .TagNames }}
+            {{ $newQ := $query.SelectTag . }}
+            {{ $base := "/" }}{{ if eq $type "calls" }}{{ $base = "/calls" }}{{ end }}
+            <li>
+                <a href="{{ $base }}{{ if $newQ }}?q={{ urlquery $newQ }}{{ end }}"
+                   class="tag {{ if $query.HasTag . }}active{{ end }}">
+                    <span class="label">{{ . }}</span>
+                </a>
+            </li>
+            {{ end }}
+        </ul>
+    </div>
+    {{ end }}
+
+    <form class="sidebar-clear" method="POST" action="/clear/{{ .Type }}"
+          hx-post="/clear/{{ .Type }}"
+          hx-swap="none"
+          hx-confirm="Delete all {{ .Type }}? This cannot be undone."
+          hx-on::after-request="if(event.detail.successful){{ if eq .Type "calls" }} window.location='/calls'{{ else }} window.location='/'{{ end }}">
+        <button type="submit" class="btn-danger">Delete all {{ .Type }}</button>
+    </form>
+</div>

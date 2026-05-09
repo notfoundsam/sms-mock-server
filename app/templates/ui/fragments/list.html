@@ -1,0 +1,87 @@
+<div id="record-list" class="record-list"
+     hx-get="/ui/fragments/list?type={{ .Type }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}&page={{ .Page }}"
+     hx-trigger="every 3s"
+     hx-target="this"
+     hx-swap="outerHTML">
+
+    <div class="list-toolbar">
+        <span class="list-count">
+            {{ if eq .Type "calls" }}{{ .Total }} call{{ if ne .Total 1 }}s{{ end }}{{ else }}{{ .Total }} message{{ if ne .Total 1 }}s{{ end }}{{ end }}
+            {{ if or .Q .Status }}<span class="list-filter-note">(filtered)</span>{{ end }}
+        </span>
+        {{ if gt .TotalPages 1 }}
+        <span class="list-pagination">
+            {{ if gt .Page 1 }}<a href="?page={{ sub .Page 1 }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}">‹ prev</a>{{ end }}
+            <span>{{ .Page }} / {{ .TotalPages }}</span>
+            {{ if lt .Page .TotalPages }}<a href="?page={{ add .Page 1 }}{{ if .Q }}&q={{ urlquery .Q }}{{ end }}{{ if .Status }}&status={{ urlquery .Status }}{{ end }}">next ›</a>{{ end }}
+        </span>
+        {{ end }}
+    </div>
+
+    {{/* Build a "?q=…&status=…" suffix for detail-page links so the Back
+         button can rebuild the inbox URL with the user's filter intact. */}}
+    {{ $filter := "" }}
+    {{ if .Q }}{{ $filter = printf "?q=%s" (urlquery .Q) }}{{ end }}
+    {{ if .Status }}{{ if $filter }}{{ $filter = printf "%s&status=%s" $filter (urlquery .Status) }}{{ else }}{{ $filter = printf "?status=%s" (urlquery .Status) }}{{ end }}{{ end }}
+
+    {{ if eq .Type "calls" }}
+        {{ if .Calls }}
+        <table class="records">
+            <thead>
+                <tr><th></th><th>From</th><th>To</th><th>Status</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+            {{ range .Calls }}
+            {{ $href := printf "/view/calls/%s%s" .SID $filter }}
+            <tr class="record-row {{ if not .IsRead }}unread{{ end }}">
+                <td class="dot">{{ if not .IsRead }}●{{ end }}</td>
+                <td><a class="row-link" href="{{ $href }}">{{ .From }}</a></td>
+                <td><a class="row-link" href="{{ $href }}">{{ .To }}</a></td>
+                <td><a class="row-link" href="{{ $href }}"><span class="status status-{{ .Status }}">{{ .Status }}</span></a></td>
+                <td class="timestamp"><a class="row-link" href="{{ $href }}">{{ formatTime .CreatedAt }}</a></td>
+                <td class="row-actions">
+                    <button class="btn-icon" title="Delete"
+                            hx-delete="/ui/calls/{{ .SID }}"
+                            hx-confirm="Delete this call?"
+                            hx-target="closest tr"
+                            hx-swap="outerHTML swap:200ms">✕</button>
+                </td>
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+        {{ else }}
+        <div class="empty-state"><p>No calls{{ if or .Q .Status }} match the current filter{{ end }}.</p></div>
+        {{ end }}
+    {{ else }}
+        {{ if .Messages }}
+        <table class="records">
+            <thead>
+                <tr><th></th><th>From</th><th>To</th><th>Body</th><th>Status</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+            {{ range .Messages }}
+            {{ $href := printf "/view/messages/%s%s" .SID $filter }}
+            <tr class="record-row {{ if not .IsRead }}unread{{ end }}">
+                <td class="dot">{{ if not .IsRead }}●{{ end }}</td>
+                <td><a class="row-link" href="{{ $href }}">{{ .From }}</a></td>
+                <td><a class="row-link" href="{{ $href }}">{{ .To }}</a></td>
+                <td><a class="row-link" href="{{ $href }}">{{ truncate .Body 80 }}</a></td>
+                <td><a class="row-link" href="{{ $href }}"><span class="status status-{{ .Status }}">{{ .Status }}</span></a></td>
+                <td class="timestamp"><a class="row-link" href="{{ $href }}">{{ formatTime .CreatedAt }}</a></td>
+                <td class="row-actions">
+                    <button class="btn-icon" title="Delete"
+                            hx-delete="/ui/messages/{{ .SID }}"
+                            hx-confirm="Delete this message?"
+                            hx-target="closest tr"
+                            hx-swap="outerHTML swap:200ms">✕</button>
+                </td>
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+        {{ else }}
+        <div class="empty-state"><p>No messages{{ if or .Q .Status }} match the current filter{{ end }}.</p><p class="hint">Send an SMS via the API to see it appear here.</p></div>
+        {{ end }}
+    {{ end }}
+</div>
