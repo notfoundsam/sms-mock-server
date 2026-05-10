@@ -4,13 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{block "title" .}}SMS Mock{{end}}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ assetUrl "/static/img/icon.svg" }}">
     <link rel="stylesheet" href="{{ assetUrl "/static/css/style.css" }}">
     <script src="{{ assetUrl "/static/js/htmx.min.js" }}"></script>
 </head>
 <body>
     <div class="app-shell">
         <header class="topbar">
-            <div class="topbar-brand">SMS Mock</div>
+            <div class="topbar-brand">
+                <img src="{{ assetUrl "/static/img/icon.svg" }}" class="topbar-brand-icon" alt="">
+                <span>SMS Mock</span>
+            </div>
             {{block "topbar_search" .}}{{end}}
             <div class="topbar-meta">{{ upper .Provider }} · {{ .Timezone }}</div>
         </header>

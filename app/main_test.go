@@ -22,7 +22,7 @@ import (
 func smokeTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
-		Server:   config.Server{Host: "127.0.0.1", Port: 0, Timezone: "UTC"},
+		Server:   config.Server{Port: 0, Timezone: "UTC"},
 		Provider: "twilio",
 		Database: config.Database{Path: ":memory:"},
 		Twilio: config.Twilio{
@@ -32,7 +32,6 @@ func smokeTestConfig(t *testing.T) *config.Config {
 				RequireAuth:         true,
 				ValidatePhoneFormat: true,
 				CheckFromNumbers:    true,
-				RequireParameters:   true,
 			},
 			SuccessNumbers:     []string{"+12025550100"},
 			AllowedFromNumbers: []string{"+12025551234"},

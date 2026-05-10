@@ -27,6 +27,14 @@ services:
       - SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543
       - SMS_MOCK_TWILIO_FAILURE_NUMBERS=+15559999999
       # - SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS=+15550000001,+15550000002
+      #
+      # --- Persistence ---
+      # SMS_MOCK_DB_PATH points the binary at the mounted volume below.
+      # Without this override the DB lives at /tmp/mock_server.db inside
+      # the container and is wiped on `docker compose down`.
+      - SMS_MOCK_DB_PATH=/data/mock_server.db
+    volumes:
+      - sms-mock-data:/data
     networks:
       - sms-mock-network
     # Note: distroless/static base image has no shell or curl/wget, so the
@@ -35,19 +43,14 @@ services:
     # `depends_on` semantics.
     restart: unless-stopped
 
-    # --- Persistence (optional) ---
-    # By default the SQLite DB lives at /tmp/mock_server.db inside the
-    # container and is wiped on restart. To persist it across restarts,
-    # uncomment the lines below AND chown the host dir to UID 65532
-    # (the distroless `nonroot` user) before `docker compose up`:
-    #
-    #   mkdir -p ./data && sudo chown -R 65532:65532 ./data
-    #
-    # environment:
-    #   - SMS_MOCK_DB_PATH=/data/mock_server.db
-    # volumes:
-    #   - ./data:/data
-
 networks:
   sms-mock-network:
     driver: bridge
+
+# Named volume for the SQLite DB. Survives `docker compose down`; remove
+# with `docker compose down -v` (or `docker volume rm sms-mock-data`).
+# To use a host directory instead (e.g. for direct sqlite3 access), replace
+# the volume mount above with `- ./data:/data` and chown the dir to UID
+# 65532 on Linux first: `mkdir -p ./data && sudo chown -R 65532:65532 ./data`.
+volumes:
+  sms-mock-data:

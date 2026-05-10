@@ -51,7 +51,6 @@ func newTestServer(t *testing.T, mutate ...func(*config.Twilio)) *testServer {
 			RequireAuth:         true,
 			ValidatePhoneFormat: true,
 			CheckFromNumbers:    true,
-			RequireParameters:   true,
 		},
 		SuccessNumbers:     []string{registeredTo},
 		AllowedFromNumbers: []string{validFrom},

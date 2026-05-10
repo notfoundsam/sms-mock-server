@@ -232,8 +232,7 @@ Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific 
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `SMS_MOCK_HOST` | `0.0.0.0` | |
-| `SMS_MOCK_PORT` | `8080` | |
+| `SMS_MOCK_PORT` | `8080` | server always binds to `0.0.0.0`; restrict externally via Docker port-forwarding |
 | `SMS_MOCK_TIMEZONE` | `UTC` | UI date display |
 | `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite path |
 | `SMS_MOCK_PROVIDER` | `twilio` | only `twilio` is supported today |
@@ -245,7 +244,6 @@ Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific 
 | `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | |
 | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | E.164 check via libphonenumber |
 | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | |
-| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | |
 | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | between status transitions |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | total attempts |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | between retries |
@@ -295,7 +293,7 @@ The server emulates Twilio's error responses to help developers test error handl
 |-----------|-------------|-------------------|---------|--------|
 | Authentication Failed | 401 | 20003 | Invalid/missing auth token | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
 | Invalid Account SID | 401 | 20003 | Wrong account SID in URL | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
-| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` |
+| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | always enforced |
 | Invalid Phone Number | 400 | 21211 | Invalid E.164 format | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` |
 | Invalid From Number | 400 | 21606 | `From` not in allowed list | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` |
 
@@ -315,21 +313,20 @@ Error responses match Twilio's standard error format:
 **Validation Order:**
 
 1. Authentication (if `SMS_MOCK_TWILIO_REQUIRE_AUTH=true`)
-2. Required parameters (if `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true`)
+2. Required parameters (always enforced — `From`/`To`/`Body` for SMS, `From`/`To`/`Url` for calls)
 3. Phone number format (if `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true`)
 4. From number allowed list (if `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=true`)
 5. Determine success/failure based on To number
 
 **Flexible Validation:**
 
-Each toggle defaults to `true`. Setting any to `false` skips that step — useful for quick testing without setting up real credentials or full E.164 numbers:
+The three toggle-able checks default to `true`. Setting any to `false` skips that step — useful for quick testing without setting up real credentials or full E.164 numbers:
 
 ```sh
-# Permissive (quick testing): turn off everything except parameter presence
+# Permissive (quick testing): turn off auth, phone format, From-allowlist
 SMS_MOCK_TWILIO_REQUIRE_AUTH=false
 SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=false
 SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=false
-# SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true   # default; keeps From/To/Body required
 ```
 
 ### 3.7 Retention Pruner
@@ -452,7 +449,7 @@ swaps and confirmations. No client JS framework.
 2. API Route → Validation (configurable):
    a. Check authentication (if SMS_MOCK_TWILIO_REQUIRE_AUTH=true)
       → Return 401 if invalid
-   b. Validate required parameters (if SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true)
+   b. Validate required parameters (always enforced)
       → Return 400 if From/To/Body missing
    c. Validate phone number format (if SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true)
       → Return 400 if invalid E.164 format
@@ -941,8 +938,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - sms-mock-data:/data
     environment:
+      - SMS_MOCK_DB_PATH=/data/mock_server.db
       - SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
       - SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here
       - SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543
@@ -966,6 +964,9 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  sms-mock-data:
 ```
 
 **SDK Configuration in Docker:**
@@ -1015,7 +1016,7 @@ Final image (both paths) is ~17–20 MB. No shell, no curl, no package manager �
 - `8080` - HTTP
 
 **Volumes**:
-- `/app/data` - SQLite database (persisted across restarts when `SMS_MOCK_DB_PATH` points inside this dir)
+- `/data` - SQLite database (persisted across restarts when `SMS_MOCK_DB_PATH` points inside this dir)
 
 Templates are embedded into the binary; there is no `/app/templates` mount.
 

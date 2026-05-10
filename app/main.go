@@ -142,7 +142,7 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	logger.Info("config loaded", "provider", cfg.Provider,
-		"host", cfg.Server.Host, "port", cfg.Server.Port,
+		"port", cfg.Server.Port,
 		"timezone", cfg.Server.Timezone, "db_path", cfg.Database.Path)
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
@@ -171,7 +171,7 @@ func run(logger *slog.Logger) error {
 			"max_age", cfg.Limits.MaxAge)
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Server.Port)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           st.handler,

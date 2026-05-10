@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <!-- Speech bubble body with tail pointing down-left. -->
+    <path d="M50 12
+             C 22 12, 8 26, 8 46
+             C 8 60, 18 71, 32 76
+             L 28 92
+             L 46 78
+             C 47.3 78, 48.6 78, 50 78
+             C 78 78, 92 64, 92 46
+             C 92 26, 78 12, 50 12 Z"
+          fill="#1aa3ff"/>
+    <!-- Three dots inside the bubble (typing indicator). -->
+    <circle cx="32" cy="44" r="6" fill="#ffffff"/>
+    <circle cx="50" cy="44" r="6" fill="#ffffff"/>
+    <circle cx="68" cy="44" r="6" fill="#ffffff"/>
+</svg>

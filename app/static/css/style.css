@@ -41,6 +41,15 @@ button { font: inherit; cursor: pointer; }
     font-weight: 600;
     letter-spacing: 0.3px;
     min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.topbar-brand-icon {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
 }
 
 .topbar-search {

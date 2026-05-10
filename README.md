@@ -2,6 +2,8 @@
 
 A mock server for Twilio SMS and Call APIs, perfect for development and testing without sending real messages or making real calls.
 
+![SMS Mock UI](docs/images/screenshot.png)
+
 ## Features
 
 - **Twilio-compatible API** - Drop-in replacement for Twilio SMS/Call APIs
@@ -43,21 +45,33 @@ The bundled `docker-compose.yml` contains a commented-out `environment:` block l
 
 ### Persistence
 
-By default the SQLite DB lives at `/tmp/mock_server.db` inside the container and is wiped on container restart — fine for the typical "fresh state per test run" use case. To persist data across restarts, set `SMS_MOCK_DB_PATH` to a path inside a mounted volume:
+By default the SQLite DB lives at `/tmp/mock_server.db` inside the container and is wiped on container restart — fine for the typical "fresh state per test run" use case. To persist data across restarts, set `SMS_MOCK_DB_PATH` to a path inside a mounted volume.
+
+The bundled `docker-compose.yml` already wires this up using a named Docker volume:
 
 ```yaml
 services:
   sms-mock-server:
-    image: notfoundsam/sms-mock-server:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
+    # ...
     environment:
       - SMS_MOCK_DB_PATH=/data/mock_server.db
+    volumes:
+      - sms-mock-data:/data
+
+volumes:
+  sms-mock-data:
 ```
 
-On Linux you must chown the host directory to UID 65532 first (the distroless `nonroot` user the container runs as): `mkdir -p ./data && sudo chown -R 65532:65532 ./data`. Docker Desktop on macOS/Windows handles UID translation automatically.
+The volume survives `docker compose down`. Remove it with `docker compose down -v` (or `docker volume rm sms-mock-data`).
+
+If you'd rather store the DB in a host directory you can inspect directly (e.g. with `sqlite3 ./data/mock_server.db`), replace the volume mount with a bind mount:
+
+```yaml
+    volumes:
+      - ./data:/data
+```
+
+On Linux the host directory must be writable by UID 65532 (the distroless `nonroot` user the container runs as): `mkdir -p ./data && sudo chown -R 65532:65532 ./data`. Docker Desktop on macOS/Windows handles UID translation automatically.
 
 ### Option 3: Local Go build
 
@@ -82,8 +96,7 @@ The server is configured entirely via `SMS_MOCK_*` environment variables. Common
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SMS_MOCK_HOST` | `0.0.0.0` | Listen address |
-| `SMS_MOCK_PORT` | `8080` | Listen port |
+| `SMS_MOCK_PORT` | `8080` | Listen port. The server always binds to `0.0.0.0`; restrict externally via Docker port-forwarding if needed. |
 | `SMS_MOCK_TIMEZONE` | `UTC` | Timezone for UI date display (e.g. `America/New_York`, `Asia/Tokyo`) |
 | `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite DB path. Default is ephemeral; mount a host directory and override to persist. |
 | `SMS_MOCK_PROVIDER` | `twilio` | Provider identifier. Only `twilio` is supported today. |
@@ -108,7 +121,6 @@ When any of `SMS_MOCK_MAX_MESSAGES`, `SMS_MOCK_MAX_CALLS`, or `SMS_MOCK_MAX_AGE`
 | `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | Validate HTTP Basic credentials |
 | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | Check E.164 phone format |
 | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | Require `From` to be in the allowlist |
-| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | Validate required form fields |
 | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | Delay between status transitions |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | Total attempts for outbound callbacks |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | Delay between retry attempts |
@@ -129,7 +141,6 @@ Earlier versions of this project used a YAML config file. The mapping to env var
 
 | Old YAML key | New env var |
 | --- | --- |
-| `server.host` | `SMS_MOCK_HOST` |
 | `server.port` | `SMS_MOCK_PORT` |
 | `server.timezone` | `SMS_MOCK_TIMEZONE` |
 | `provider` | `SMS_MOCK_PROVIDER` |
@@ -139,7 +150,7 @@ Earlier versions of this project used a YAML config file. The mapping to env var
 | `twilio.registered_numbers` | `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` (renamed) |
 | `twilio.failure_numbers` | `SMS_MOCK_TWILIO_FAILURE_NUMBERS` |
 | `twilio.allowed_from_numbers` | `SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS` |
-| `twilio.validation.*` | `SMS_MOCK_TWILIO_REQUIRE_AUTH` / `_VALIDATE_PHONE_FORMAT` / `_CHECK_FROM_NUMBERS` / `_REQUIRE_PARAMETERS` |
+| `twilio.validation.*` | `SMS_MOCK_TWILIO_REQUIRE_AUTH` / `_VALIDATE_PHONE_FORMAT` / `_CHECK_FROM_NUMBERS` |
 | `twilio.callbacks.delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` |
 | `twilio.callbacks.retry_attempts` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` |
 | `twilio.callbacks.retry_delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` |

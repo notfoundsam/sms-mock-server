@@ -21,7 +21,6 @@ type Config struct {
 }
 
 type Server struct {
-	Host     string
 	Port     int
 	Timezone string
 }
@@ -40,7 +39,6 @@ type Validation struct {
 	RequireAuth         bool
 	ValidatePhoneFormat bool
 	CheckFromNumbers    bool
-	RequireParameters   bool
 }
 
 type Callbacks struct {
@@ -90,14 +88,13 @@ func Load() (*Config, error) {
 
 func defaults() *Config {
 	return &Config{
-		Server:   Server{Host: "0.0.0.0", Port: 8080, Timezone: "UTC"},
+		Server:   Server{Port: 8080, Timezone: "UTC"},
 		Provider: "twilio",
 		Twilio: Twilio{
 			Validation: Validation{
 				RequireAuth:         true,
 				ValidatePhoneFormat: true,
 				CheckFromNumbers:    true,
-				RequireParameters:   true,
 			},
 			Callbacks: Callbacks{
 				DelaySeconds:      2,
@@ -115,7 +112,6 @@ func defaults() *Config {
 }
 
 func applyEnv(cfg *Config) {
-	cfg.Server.Host = getStr("SMS_MOCK_HOST", cfg.Server.Host)
 	cfg.Server.Port = getInt("SMS_MOCK_PORT", cfg.Server.Port)
 	cfg.Server.Timezone = getStr("SMS_MOCK_TIMEZONE", cfg.Server.Timezone)
 	cfg.Database.Path = getStr("SMS_MOCK_DB_PATH", cfg.Database.Path)
@@ -130,7 +126,6 @@ func applyEnv(cfg *Config) {
 	cfg.Twilio.Validation.RequireAuth = getBool("SMS_MOCK_TWILIO_REQUIRE_AUTH", cfg.Twilio.Validation.RequireAuth)
 	cfg.Twilio.Validation.ValidatePhoneFormat = getBool("SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT", cfg.Twilio.Validation.ValidatePhoneFormat)
 	cfg.Twilio.Validation.CheckFromNumbers = getBool("SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS", cfg.Twilio.Validation.CheckFromNumbers)
-	cfg.Twilio.Validation.RequireParameters = getBool("SMS_MOCK_TWILIO_REQUIRE_PARAMETERS", cfg.Twilio.Validation.RequireParameters)
 
 	cfg.Twilio.Callbacks.DelaySeconds = getInt("SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS", cfg.Twilio.Callbacks.DelaySeconds)
 	cfg.Twilio.Callbacks.RetryAttempts = getInt("SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS", cfg.Twilio.Callbacks.RetryAttempts)

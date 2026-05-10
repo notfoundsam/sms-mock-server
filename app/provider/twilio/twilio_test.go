@@ -34,7 +34,6 @@ func baseConfig() *config.Twilio {
 			RequireAuth:         true,
 			ValidatePhoneFormat: true,
 			CheckFromNumbers:    true,
-			RequireParameters:   true,
 		},
 		SuccessNumbers:     []string{validRegistered, validRegistered2},
 		AllowedFromNumbers: []string{validFrom1, validFrom2},
@@ -119,16 +118,6 @@ func TestValidateSMS_missingParameters(t *testing.T) {
 			assert.Equal(t, tc.want, v.Vars["parameter"])
 		})
 	}
-}
-
-func TestValidateSMS_skipsWhenRequireParametersOff(t *testing.T) {
-	cfg := baseConfig()
-	cfg.Validation.RequireParameters = false
-	cfg.Validation.ValidatePhoneFormat = false
-	cfg.Validation.CheckFromNumbers = false
-	p := New(cfg)
-
-	assert.NoError(t, p.ValidateSMS(provider.SMSRequest{}), "expected no error with all validations disabled")
 }
 
 // --- Phone format ---
