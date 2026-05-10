@@ -232,8 +232,7 @@ Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific 
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `SMS_MOCK_HOST` | `0.0.0.0` | |
-| `SMS_MOCK_PORT` | `8080` | |
+| `SMS_MOCK_PORT` | `8080` | server always binds to `0.0.0.0`; restrict externally via Docker port-forwarding |
 | `SMS_MOCK_TIMEZONE` | `UTC` | UI date display |
 | `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite path |
 | `SMS_MOCK_PROVIDER` | `twilio` | only `twilio` is supported today |

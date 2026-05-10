@@ -96,8 +96,7 @@ The server is configured entirely via `SMS_MOCK_*` environment variables. Common
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SMS_MOCK_HOST` | `0.0.0.0` | Listen address |
-| `SMS_MOCK_PORT` | `8080` | Listen port |
+| `SMS_MOCK_PORT` | `8080` | Listen port. The server always binds to `0.0.0.0`; restrict externally via Docker port-forwarding if needed. |
 | `SMS_MOCK_TIMEZONE` | `UTC` | Timezone for UI date display (e.g. `America/New_York`, `Asia/Tokyo`) |
 | `SMS_MOCK_DB_PATH` | `/tmp/mock_server.db` | SQLite DB path. Default is ephemeral; mount a host directory and override to persist. |
 | `SMS_MOCK_PROVIDER` | `twilio` | Provider identifier. Only `twilio` is supported today. |
@@ -143,7 +142,6 @@ Earlier versions of this project used a YAML config file. The mapping to env var
 
 | Old YAML key | New env var |
 | --- | --- |
-| `server.host` | `SMS_MOCK_HOST` |
 | `server.port` | `SMS_MOCK_PORT` |
 | `server.timezone` | `SMS_MOCK_TIMEZONE` |
 | `provider` | `SMS_MOCK_PROVIDER` |

@@ -15,7 +15,6 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	keys := []string{
-		"SMS_MOCK_HOST",
 		"SMS_MOCK_PORT",
 		"SMS_MOCK_TIMEZONE",
 		"SMS_MOCK_DB_PATH",
@@ -62,7 +61,6 @@ func TestLoad_appliesDefaults(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 
-	assert.Equal(t, "0.0.0.0", cfg.Server.Host)
 	assert.Equal(t, 8080, cfg.Server.Port)
 	assert.Equal(t, "UTC", cfg.Server.Timezone)
 	assert.Equal(t, "twilio", cfg.Provider)
@@ -86,7 +84,6 @@ func TestLoad_appliesDefaults(t *testing.T) {
 func TestLoad_envOverridesDefaults(t *testing.T) {
 	clearEnv(t)
 	dbPath := useTempDB(t)
-	t.Setenv("SMS_MOCK_HOST", "127.0.0.1")
 	t.Setenv("SMS_MOCK_PORT", "9090")
 	t.Setenv("SMS_MOCK_TIMEZONE", "Asia/Tokyo")
 	t.Setenv("SMS_MOCK_PROVIDER", "twilio")
@@ -110,7 +107,6 @@ func TestLoad_envOverridesDefaults(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 
-	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
 	assert.Equal(t, 9090, cfg.Server.Port)
 	assert.Equal(t, "Asia/Tokyo", cfg.Server.Timezone)
 	assert.Equal(t, dbPath, cfg.Database.Path)

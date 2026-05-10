@@ -21,7 +21,6 @@ type Config struct {
 }
 
 type Server struct {
-	Host     string
 	Port     int
 	Timezone string
 }
@@ -90,7 +89,7 @@ func Load() (*Config, error) {
 
 func defaults() *Config {
 	return &Config{
-		Server:   Server{Host: "0.0.0.0", Port: 8080, Timezone: "UTC"},
+		Server:   Server{Port: 8080, Timezone: "UTC"},
 		Provider: "twilio",
 		Twilio: Twilio{
 			Validation: Validation{
@@ -115,7 +114,6 @@ func defaults() *Config {
 }
 
 func applyEnv(cfg *Config) {
-	cfg.Server.Host = getStr("SMS_MOCK_HOST", cfg.Server.Host)
 	cfg.Server.Port = getInt("SMS_MOCK_PORT", cfg.Server.Port)
 	cfg.Server.Timezone = getStr("SMS_MOCK_TIMEZONE", cfg.Server.Timezone)
 	cfg.Database.Path = getStr("SMS_MOCK_DB_PATH", cfg.Database.Path)
