@@ -121,7 +121,6 @@ When any of `SMS_MOCK_MAX_MESSAGES`, `SMS_MOCK_MAX_CALLS`, or `SMS_MOCK_MAX_AGE`
 | `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | Validate HTTP Basic credentials |
 | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | Check E.164 phone format |
 | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | Require `From` to be in the allowlist |
-| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | Validate required form fields |
 | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | Delay between status transitions |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | Total attempts for outbound callbacks |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | Delay between retry attempts |
@@ -151,7 +150,7 @@ Earlier versions of this project used a YAML config file. The mapping to env var
 | `twilio.registered_numbers` | `SMS_MOCK_TWILIO_SUCCESS_NUMBERS` (renamed) |
 | `twilio.failure_numbers` | `SMS_MOCK_TWILIO_FAILURE_NUMBERS` |
 | `twilio.allowed_from_numbers` | `SMS_MOCK_TWILIO_ALLOWED_FROM_NUMBERS` |
-| `twilio.validation.*` | `SMS_MOCK_TWILIO_REQUIRE_AUTH` / `_VALIDATE_PHONE_FORMAT` / `_CHECK_FROM_NUMBERS` / `_REQUIRE_PARAMETERS` |
+| `twilio.validation.*` | `SMS_MOCK_TWILIO_REQUIRE_AUTH` / `_VALIDATE_PHONE_FORMAT` / `_CHECK_FROM_NUMBERS` |
 | `twilio.callbacks.delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` |
 | `twilio.callbacks.retry_attempts` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` |
 | `twilio.callbacks.retry_delay_seconds` | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` |

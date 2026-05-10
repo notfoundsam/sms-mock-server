@@ -39,7 +39,6 @@ type Validation struct {
 	RequireAuth         bool
 	ValidatePhoneFormat bool
 	CheckFromNumbers    bool
-	RequireParameters   bool
 }
 
 type Callbacks struct {
@@ -96,7 +95,6 @@ func defaults() *Config {
 				RequireAuth:         true,
 				ValidatePhoneFormat: true,
 				CheckFromNumbers:    true,
-				RequireParameters:   true,
 			},
 			Callbacks: Callbacks{
 				DelaySeconds:      2,
@@ -128,7 +126,6 @@ func applyEnv(cfg *Config) {
 	cfg.Twilio.Validation.RequireAuth = getBool("SMS_MOCK_TWILIO_REQUIRE_AUTH", cfg.Twilio.Validation.RequireAuth)
 	cfg.Twilio.Validation.ValidatePhoneFormat = getBool("SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT", cfg.Twilio.Validation.ValidatePhoneFormat)
 	cfg.Twilio.Validation.CheckFromNumbers = getBool("SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS", cfg.Twilio.Validation.CheckFromNumbers)
-	cfg.Twilio.Validation.RequireParameters = getBool("SMS_MOCK_TWILIO_REQUIRE_PARAMETERS", cfg.Twilio.Validation.RequireParameters)
 
 	cfg.Twilio.Callbacks.DelaySeconds = getInt("SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS", cfg.Twilio.Callbacks.DelaySeconds)
 	cfg.Twilio.Callbacks.RetryAttempts = getInt("SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS", cfg.Twilio.Callbacks.RetryAttempts)

@@ -27,7 +27,6 @@ func clearEnv(t *testing.T) {
 		"SMS_MOCK_TWILIO_REQUIRE_AUTH",
 		"SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT",
 		"SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS",
-		"SMS_MOCK_TWILIO_REQUIRE_PARAMETERS",
 		"SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS",
 		"SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS",
 		"SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS",
@@ -68,7 +67,6 @@ func TestLoad_appliesDefaults(t *testing.T) {
 	assert.True(t, cfg.Twilio.Validation.RequireAuth)
 	assert.True(t, cfg.Twilio.Validation.ValidatePhoneFormat)
 	assert.True(t, cfg.Twilio.Validation.CheckFromNumbers)
-	assert.True(t, cfg.Twilio.Validation.RequireParameters)
 	assert.Equal(t, 2, cfg.Twilio.Callbacks.DelaySeconds)
 	assert.Equal(t, 3, cfg.Twilio.Callbacks.RetryAttempts)
 	assert.Equal(t, 5, cfg.Twilio.Callbacks.RetryDelaySeconds)
@@ -95,7 +93,6 @@ func TestLoad_envOverridesDefaults(t *testing.T) {
 	t.Setenv("SMS_MOCK_TWILIO_REQUIRE_AUTH", "false")
 	t.Setenv("SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT", "false")
 	t.Setenv("SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS", "false")
-	t.Setenv("SMS_MOCK_TWILIO_REQUIRE_PARAMETERS", "false")
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS", "1")
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS", "5")
 	t.Setenv("SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS", "10")
@@ -118,7 +115,6 @@ func TestLoad_envOverridesDefaults(t *testing.T) {
 	assert.False(t, cfg.Twilio.Validation.RequireAuth)
 	assert.False(t, cfg.Twilio.Validation.ValidatePhoneFormat)
 	assert.False(t, cfg.Twilio.Validation.CheckFromNumbers)
-	assert.False(t, cfg.Twilio.Validation.RequireParameters)
 	assert.Equal(t, 1, cfg.Twilio.Callbacks.DelaySeconds)
 	assert.Equal(t, 5, cfg.Twilio.Callbacks.RetryAttempts)
 	assert.Equal(t, 10, cfg.Twilio.Callbacks.RetryDelaySeconds)

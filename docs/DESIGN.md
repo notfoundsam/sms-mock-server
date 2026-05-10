@@ -244,7 +244,6 @@ Common (provider-agnostic) settings use the `SMS_MOCK_` prefix; Twilio-specific 
 | `SMS_MOCK_TWILIO_REQUIRE_AUTH` | `true` | |
 | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` | `true` | E.164 check via libphonenumber |
 | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` | `true` | |
-| `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` | `true` | |
 | `SMS_MOCK_TWILIO_CALLBACK_DELAY_SECONDS` | `2` | between status transitions |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_ATTEMPTS` | `3` | total attempts |
 | `SMS_MOCK_TWILIO_CALLBACK_RETRY_DELAY_SECONDS` | `5` | between retries |
@@ -294,7 +293,7 @@ The server emulates Twilio's error responses to help developers test error handl
 |-----------|-------------|-------------------|---------|--------|
 | Authentication Failed | 401 | 20003 | Invalid/missing auth token | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
 | Invalid Account SID | 401 | 20003 | Wrong account SID in URL | `SMS_MOCK_TWILIO_REQUIRE_AUTH` |
-| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS` |
+| Missing Required Parameter | 400 | 21604 | Missing `From`, `To`, or `Body` | always enforced |
 | Invalid Phone Number | 400 | 21211 | Invalid E.164 format | `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT` |
 | Invalid From Number | 400 | 21606 | `From` not in allowed list | `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS` |
 
@@ -314,21 +313,20 @@ Error responses match Twilio's standard error format:
 **Validation Order:**
 
 1. Authentication (if `SMS_MOCK_TWILIO_REQUIRE_AUTH=true`)
-2. Required parameters (if `SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true`)
+2. Required parameters (always enforced — `From`/`To`/`Body` for SMS, `From`/`To`/`Url` for calls)
 3. Phone number format (if `SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true`)
 4. From number allowed list (if `SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=true`)
 5. Determine success/failure based on To number
 
 **Flexible Validation:**
 
-Each toggle defaults to `true`. Setting any to `false` skips that step — useful for quick testing without setting up real credentials or full E.164 numbers:
+The three toggle-able checks default to `true`. Setting any to `false` skips that step — useful for quick testing without setting up real credentials or full E.164 numbers:
 
 ```sh
-# Permissive (quick testing): turn off everything except parameter presence
+# Permissive (quick testing): turn off auth, phone format, From-allowlist
 SMS_MOCK_TWILIO_REQUIRE_AUTH=false
 SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=false
 SMS_MOCK_TWILIO_CHECK_FROM_NUMBERS=false
-# SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true   # default; keeps From/To/Body required
 ```
 
 ### 3.7 Retention Pruner
@@ -451,7 +449,7 @@ swaps and confirmations. No client JS framework.
 2. API Route → Validation (configurable):
    a. Check authentication (if SMS_MOCK_TWILIO_REQUIRE_AUTH=true)
       → Return 401 if invalid
-   b. Validate required parameters (if SMS_MOCK_TWILIO_REQUIRE_PARAMETERS=true)
+   b. Validate required parameters (always enforced)
       → Return 400 if From/To/Body missing
    c. Validate phone number format (if SMS_MOCK_TWILIO_VALIDATE_PHONE_FORMAT=true)
       → Return 400 if invalid E.164 format

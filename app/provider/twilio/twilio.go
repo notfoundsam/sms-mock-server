@@ -103,10 +103,9 @@ func (p *Provider) ValidateCall(req provider.CallRequest) error {
 // validateRequiredParams reports the first missing param. Param names align with
 // the Twilio API ("From", "To", "Body" / "From", "To", "Url"), so the error
 // template's `{{ parameter }}` interpolation matches the user-facing field name.
+// Always enforced — Twilio's API rejects requests with missing required fields,
+// and accepting empty values would let malformed records into storage.
 func (p *Provider) validateRequiredParams(from, to, body string, names []string) error {
-	if !p.cfg.Validation.RequireParameters {
-		return nil
-	}
 	values := []string{from, to, body}
 	for i, v := range values {
 		if v == "" {
