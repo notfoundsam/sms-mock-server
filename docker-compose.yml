@@ -8,7 +8,6 @@ services:
       - "8080:8080"
     environment:
       - LOG_LEVEL=INFO
-      - SMS_MOCK_TIMEZONE=Asia/Tokyo
       # Validation is off by default in compose so the mock works out of the
       # box. Set REQUIRE_AUTH=true (and supply real ACCOUNT_SID/AUTH_TOKEN
       # below) to mirror Twilio's auth behavior.

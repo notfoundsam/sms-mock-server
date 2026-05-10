@@ -938,8 +938,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - sms-mock-data:/data
     environment:
+      - SMS_MOCK_DB_PATH=/data/mock_server.db
       - SMS_MOCK_TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
       - SMS_MOCK_TWILIO_AUTH_TOKEN=your_auth_token_here
       - SMS_MOCK_TWILIO_SUCCESS_NUMBERS=+15551234567,+15559876543
@@ -963,6 +964,9 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  sms-mock-data:
 ```
 
 **SDK Configuration in Docker:**
@@ -1012,7 +1016,7 @@ Final image (both paths) is ~17â€“20 MB. No shell, no curl, no package manager â
 - `8080` - HTTP
 
 **Volumes**:
-- `/app/data` - SQLite database (persisted across restarts when `SMS_MOCK_DB_PATH` points inside this dir)
+- `/data` - SQLite database (persisted across restarts when `SMS_MOCK_DB_PATH` points inside this dir)
 
 Templates are embedded into the binary; there is no `/app/templates` mount.
 
